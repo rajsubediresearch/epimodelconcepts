@@ -9,12 +9,22 @@
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <style>
+    .progress-bar-wrap{background:var(--bg-secondary);border-radius:4px;height:6px;margin:8px 0;overflow:hidden}
+    .progress-bar{height:6px;background:var(--accent);border-radius:4px;transition:width 0.15s;width:0%}
+    .hist-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px}
     .split-badge{display:inline-block;font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
     .split-badge.train{background:var(--accent-bg);color:var(--accent-text);border:0.5px solid var(--accent)}
     .split-badge.test{background:var(--success-bg);color:var(--success-text);border:0.5px solid var(--success-text)}
     .split-badge.future{background:var(--warn-bg);color:var(--warn-text);border:0.5px solid var(--warn-text)}
     .forecast-eval-card{background:var(--success-bg);border:0.5px solid var(--success-text);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:1rem}
     .forecast-eval-card .section-label{color:var(--success-text)}
+    .arima-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px}
+    .arima-field{display:flex;flex-direction:column;gap:3px}
+    .arima-field label{font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em}
+    .arima-field input{width:64px;text-align:center;font-size:14px;font-weight:500;font-family:var(--font-mono);padding:6px 4px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text)}
+    .arima-field input:focus{outline:none;border-color:var(--accent)}
+    .hint-text{font-size:12px;color:var(--text-tertiary);line-height:1.6;margin-top:6px}
+    .hint-text strong{color:var(--text-secondary)}
   </style>
 </head>
 <body>
@@ -30,9 +40,10 @@
 <main class="page-wrap">
   <div class="page-hero">
     <h1>Statistical models</h1>
-    <p>Regression-based epidemic models — log-linear, Poisson, and Negative Binomial. Fit on a training window, forecast ahead, and evaluate out-of-sample performance with automatic dispersion checking.</p>
+    <p>Regression and time series models for epidemic count data — log-linear, Poisson, Negative Binomial, ARIMA, and GAM. Fit on a training window, forecast ahead, evaluate out-of-sample performance with bootstrap confidence intervals.</p>
   </div>
 
+  <!-- ── Input card ── -->
   <div class="card">
     <div class="section-label">Outbreak data</div>
     <div class="field-row"><label>Disease</label><input type="text" id="diseaseName" value="Influenza A (H1N1)" oninput="updateLabels()"></div>
@@ -43,6 +54,12 @@
         <option value="daily">Daily</option>
         <option value="monthly">Monthly</option>
         <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div class="field-row"><label>Data type</label>
+      <select id="dataType" onchange="updateSplitInfo()">
+        <option value="incidence">Incidence (new cases per period)</option>
+        <option value="cumulative">Cumulative cases</option>
       </select>
     </div>
 
@@ -57,18 +74,64 @@
     <div class="field-row"><label>Case counts</label>
       <textarea id="dataInput" placeholder="Comma or newline separated numbers" oninput="updateSplitInfo()"></textarea>
     </div>
+    <div id="cumulativeNote" style="display:none" class="warn-box">
+      Cumulative data selected — series will be differenced (converted to incidence) before fitting. Forecast will be shown on the incidence scale.
+    </div>
 
     <div class="inner-divider">Model</div>
     <div class="pill-group" id="modelPills">
       <button class="pill-btn active" onclick="setModel('poisson',this)">Poisson GLM</button>
-      <button class="pill-btn" onclick="setModel('negbinom',this)">Negative Binomial GLM</button>
-      <button class="pill-btn" onclick="setModel('linear_log',this)">Log-linear (OLS)</button>
+      <button class="pill-btn" onclick="setModel('negbinom',this)">Neg. Binomial GLM</button>
+      <button class="pill-btn" onclick="setModel('linear_log',this)">Log-linear OLS</button>
+      <button class="pill-btn" onclick="setModel('arima',this)">ARIMA</button>
+      <button class="pill-btn" onclick="setModel('gam',this)">GAM</button>
     </div>
     <div id="modelNote" class="info-box" style="margin-top:4px;font-size:12px"></div>
 
+    <!-- ARIMA order controls -->
+    <div id="arimaControls" style="display:none;margin-top:10px">
+      <div class="section-label" style="margin-bottom:6px">ARIMA order (p, d, q)</div>
+      <div class="arima-row">
+        <div class="arima-field">
+          <label>p (AR)</label>
+          <input type="number" id="arima_p" value="1" min="0" max="5">
+        </div>
+        <div class="arima-field">
+          <label>d (diff)</label>
+          <input type="number" id="arima_d" value="1" min="0" max="2">
+        </div>
+        <div class="arima-field">
+          <label>q (MA)</label>
+          <input type="number" id="arima_q" value="1" min="0" max="5">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="pill-btn active" id="autoArimaBtn" onclick="setAutoArima(true,this)">Auto-select</button>
+          <button class="pill-btn" id="manualArimaBtn" onclick="setAutoArima(false,this)">Manual</button>
+        </div>
+      </div>
+      <div id="arimaAutoNote" class="hint-text">Auto-select fits ARIMA(p,d,q) for all combinations of p ∈ {0–3}, d ∈ {0–2}, q ∈ {0–3} and picks the order with lowest AIC.</div>
+      <div class="hint-text" style="margin-top:6px">
+        <strong>p (autoregressive order):</strong> How many past values predict the current value. p=1 means today's cases depend on yesterday's. Higher p captures longer memory. Start with p=1 or 2.<br>
+        <strong>d (differencing order):</strong> How many times to difference the series to make it stationary. d=0: series is already stationary. d=1: first difference (removes linear trend). d=2: second difference (removes quadratic trend). For epidemic growth, d=1 is typical.<br>
+        <strong>q (moving average order):</strong> How many past forecast errors affect the current value. q=1 means today's cases are also influenced by last period's surprise. Helps capture short-term autocorrelation in residuals.
+      </div>
+    </div>
+
+    <!-- GAM smoothing control -->
+    <div id="gamControls" style="display:none;margin-top:10px">
+      <div class="field-row">
+        <label>Smoothing (df)</label>
+        <input type="number" id="gam_df" value="6" min="3" max="20">
+        <span style="font-size:12px;color:var(--text-tertiary)">degrees of freedom</span>
+      </div>
+      <div class="hint-text">
+        <strong>Degrees of freedom (df):</strong> Controls how wiggly the fitted curve is. Low df (3–4) = smooth, captures broad trend. High df (10+) = flexible, follows local fluctuations but may overfit. Default 6 is a good starting point for epidemic curves spanning 20–50 time points.
+      </div>
+    </div>
+
     <div class="inner-divider">Training window &amp; forecast horizon</div>
     <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.6">
-      Statistical regression models are most valid during the <strong>exponential growth phase</strong>. Set the training window to cover only the growth phase, then forecast ahead.
+      Regression models (Poisson, NB, log-linear) are most valid during the <strong>growth phase</strong>. ARIMA and GAM can be fitted across a wider window including the peak.
     </p>
     <div class="field-row">
       <label>Training: start</label>
@@ -87,18 +150,34 @@
     </div>
     <div id="splitInfo" class="info-box" style="margin-top:6px;font-size:13px;line-height:1.6"></div>
 
+    <div class="inner-divider">Bootstrap uncertainty</div>
+    <div class="field-row">
+      <label>Bootstrap iterations</label>
+      <input type="number" id="bootN" value="300" min="0" max="1000" step="50">
+      <span style="font-size:12px;color:var(--text-tertiary)">Set to 0 to skip</span>
+    </div>
+    <div class="info-box" style="font-size:12px;margin-top:4px">
+      Residual bootstrap runs automatically after fitting. 300 iterations recommended. Uses Pearson residuals resampled with replacement.
+    </div>
+
     <div style="margin-top:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn-primary" id="fitBtn" onclick="runFit()">Fit model</button>
       <button class="btn-primary" id="compareBtn" onclick="fitAllModels()" style="background:var(--bg-secondary);color:var(--accent);border:0.5px solid var(--accent)">Compare all models</button>
       <span id="fitStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
     </div>
+    <div class="progress-bar-wrap" id="progressWrap" style="display:none">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div id="progressLabel" style="font-size:11px;color:var(--text-tertiary);margin-top:2px"></div>
   </div>
 
+  <!-- Model definition -->
   <div class="card" id="modelDefCard" style="display:none">
     <div class="section-label" id="modelDefLabel">Model overview</div>
     <div id="modelDefContent"></div>
   </div>
 
+  <!-- Results -->
   <div id="resultsArea" style="display:none">
 
     <div class="card">
@@ -109,13 +188,21 @@
 
     <div class="card">
       <div class="section-label">Dispersion check <span class="split-badge train">Training data</span></div>
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Always check dispersion before choosing a count model. This determines whether Poisson or Negative Binomial is appropriate.</p>
       <div id="dispersionResults"></div>
     </div>
 
     <div class="card">
-      <div class="section-label">Estimated parameters</div>
+      <div class="section-label">Estimated parameters &amp; derived quantities</div>
       <div id="paramResults"></div>
+    </div>
+
+    <div class="card" id="bootCard" style="display:none">
+      <div class="section-label">Bootstrap CIs &amp; parameter distributions</div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+        Pearson residual bootstrap: residuals resampled with replacement, model refit N times. Narrow = well-identified. Wide/skewed = poorly constrained.
+      </p>
+      <div id="bootSummary"></div>
+      <div class="hist-grid" id="paramHistograms"></div>
     </div>
 
     <div class="card">
@@ -126,9 +213,7 @@
     <div id="forecastEvalCard" style="display:none">
       <div class="forecast-eval-card">
         <div class="section-label">Forecast evaluation <span class="split-badge test">Hold-out</span></div>
-        <p style="font-size:13px;color:var(--success-text);margin-bottom:12px;line-height:1.6">
-          Comparing model forecasts against observed hold-out values.
-        </p>
+        <p style="font-size:13px;color:var(--success-text);margin-bottom:12px">Comparing forecasts against observed hold-out values.</p>
         <div id="forecastMetrics"></div>
         <div id="forecastVsObsChart" style="width:100%;height:260px;margin-top:12px"></div>
       </div>
@@ -136,45 +221,37 @@
 
     <div id="noTestDataNote" style="display:none">
       <div class="card">
-        <div class="warn-box" style="margin:0">
-          ⚠ <strong>Forecast only — no hold-out evaluation.</strong>
-          Forecast extends beyond observed data. To evaluate forecast performance, ensure training end + forecast horizon ≤ total data length.
-        </div>
+        <div class="warn-box" style="margin:0">⚠ <strong>Forecast only — no hold-out evaluation.</strong> Forecast extends beyond observed data.</div>
       </div>
     </div>
 
     <div class="card">
       <div class="section-label">Residuals <span class="split-badge train">Training</span></div>
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Residuals should scatter randomly around zero. Patterns indicate model misspecification.</p>
       <div id="residualChart" style="width:100%;height:220px"></div>
     </div>
 
   </div>
 
   <div class="card" id="comparisonCard" style="display:none">
-    <div class="section-label">Model comparison</div>
+    <div class="section-label">Model comparison — all models</div>
     <div id="comparisonTable"></div>
   </div>
 
+  <!-- Concepts -->
   <div class="card">
-    <div class="section-label">About statistical models for epidemic counts</div>
+    <div class="section-label">Model guide</div>
     <div class="concept-box">
-      <div class="cb-definition"><strong>Why regression models for epidemic growth?</strong>
-        During the exponential growth phase, log(cases) grows linearly with time. Fitting a regression on this log-linear relationship directly estimates the growth rate r = β₁ and doubling time = ln(2)/β₁. The choice of distribution (normal, Poisson, NB) affects how uncertainty is quantified.
+      <div class="cb-definition"><strong>When to use each model</strong>
+        Log-linear, Poisson, NB: best for the exponential growth phase — fast, interpretable, give growth rate and doubling time directly.
+        ARIMA: best when autocorrelation in residuals is present, or when the epidemic has passed the growth phase — captures temporal structure.
+        GAM: best for flexible nonparametric smoothing of the full curve — good for describing shape without assuming a specific functional form.
       </div>
-      <div class="cb-interpretation"><strong>Growth phase only</strong>
-        Statistical regression models assume a log-linear (exponential) relationship — they cannot capture epidemic peaks or declines. Always restrict the training window to the growth phase. Forecasting into the decline phase will produce overestimates. For full-curve modeling, use phenomenological models.
+      <div class="cb-interpretation"><strong>Comparison strategy</strong>
+        For growth phase data: Poisson vs NB (check VMR) vs log-linear are the right comparison.
+        For full curve or post-peak data: ARIMA and GAM will outperform regression models.
+        Always compare both in-sample AIC and out-of-sample forecast RMSE — a model can win on AIC but lose on forecast RMSE if it overfits.
       </div>
-      <div class="cb-sowhat">A common mistake is fitting regression on the full epidemic time series. The result will be a poor fit that averages the rise and fall. The training window should end before the peak.</div>
-    </div>
-    <div class="concept-box" style="margin-top:0.75rem">
-      <div class="cb-definition"><strong>Negative Binomial dispersion parameter θ</strong>
-        θ controls extra variance beyond Poisson. Large θ → Poisson. Small θ (e.g. 0.5–2) → strong overdispersion — the statistical signature of superspreading, geographic clustering, or reporting heterogeneity.
-      </div>
-      <div class="cb-interpretation"><strong>What small θ tells you</strong>
-        In COVID-19, estimated θ ≈ 0.1–0.5 suggested ~20% of cases drove ~80% of transmission. This heterogeneity has major implications for intervention design — targeted measures on high-transmission nodes are more efficient than population-wide measures.
-      </div>
-      <div class="cb-sowhat">If fitted θ &lt; 1, investigate whether superspreading or spatial clustering is driving the overdispersion before designing interventions.</div>
+      <div class="cb-sowhat">Use "Compare all models" to see the full picture. The best model for forecasting is not always the one with the best in-sample fit.</div>
     </div>
   </div>
 
@@ -185,12 +262,32 @@
 <script src="js/optimizer.js"></script>
 <script src="js/models.js"></script>
 <script>
-let currentModel='poisson';
+let currentModel='poisson', autoArima=true;
 
 const modelNotes={
-  poisson:'Poisson GLM: log(E[I]) = β₀ + β₁·t. Assumes Var = Mean. Appropriate when VMR ≈ 1. Underestimates uncertainty when data is overdispersed.',
-  negbinom:'Negative Binomial GLM: same mean structure but allows Var > Mean via dispersion θ. Recommended when VMR > 1.5.',
-  linear_log:'Log-linear OLS: fits a straight line to log(cases). Equivalent to assuming exponential growth. Simplest but ignores count nature of data.'
+  poisson:'Poisson GLM: log(E[I]) = β₀ + β₁·t. Assumes Var = Mean. Best for growth phase. Underestimates uncertainty when overdispersed.',
+  negbinom:'Negative Binomial GLM: same structure as Poisson but allows Var > Mean via θ. Best when VMR > 1.5.',
+  linear_log:'Log-linear OLS: regresses log(cases) on time. Simple baseline, ignores count nature. Cannot handle zeros.',
+  arima:'ARIMA(p,d,q): autoregressive integrated moving average. Captures temporal autocorrelation. Best for full curves or post-peak data.',
+  gam:'GAM: fits a smooth nonparametric spline to the time series. Flexible shape without parametric assumptions. Good for describing the full epidemic curve.'
+};
+
+const modelDefs={
+  poisson:{name:'Poisson GLM',eq:'log(E[Iₜ]) = β₀ + β₁·t',
+    def:'A generalized linear model for count data with a log link and Poisson distribution (Var = Mean). Each unit increase in time multiplies expected cases by exp(β₁). Growth rate r = β₁; doubling time = ln(2)/β₁.',
+    strengths:['Appropriate for count data','Handles zeros','Directly estimates growth rate'],limits:['Equidispersion assumption often violated','Growth phase only']},
+  negbinom:{name:'Negative Binomial GLM',eq:'log(E[Iₜ]) = β₀ + β₁·t, Var = μ + μ²/θ',
+    def:'Extends Poisson with dispersion parameter θ. As θ→∞, approaches Poisson. Standard for overdispersed outbreak data. Small θ indicates superspreading or clustering.',
+    strengths:['Robust to overdispersion','Wider honest CIs','θ reflects transmission heterogeneity'],limits:['Growth phase only','θ needs sufficient data']},
+  linear_log:{name:'Log-linear OLS',eq:'log(Iₜ) = β₀ + β₁·t + εₜ',
+    def:'OLS on log-transformed counts. Equivalent to exponential growth on original scale. Simplest baseline — useful for teaching. Cannot handle zeros.',
+    strengths:['Extremely simple','Doubling time from β₁'],limits:['Ignores count nature','Cannot handle zeros','Growth phase only']},
+  arima:{name:'ARIMA(p,d,q)',eq:'Φ(B)Δᵈ Iₜ = Θ(B)εₜ',
+    def:'Autoregressive Integrated Moving Average. p: AR order — past values predict current. d: differencing — removes trend to achieve stationarity. q: MA order — past errors influence current value. Best when residuals show autocorrelation.',
+    strengths:['Captures temporal autocorrelation','Valid beyond growth phase','No distributional assumption'],limits:['Order selection needed','Does not give growth rate directly','Longer series needed for reliable estimation']},
+  gam:{name:'GAM (spline smoother)',eq:'E[Iₜ] = f(t), f smooth via B-splines',
+    def:'Generalized Additive Model — fits a smooth nonparametric function of time using B-spline basis functions. The smoothness is controlled by the degrees of freedom (df). Does not assume a specific functional form, making it ideal for describing full epidemic curves.',
+    strengths:['Flexible — no parametric assumption','Captures rise and fall','Good for visualizing epidemic shape'],limits:['Does not give mechanistic parameters','May overfit with high df','Forecast extrapolation can be unreliable']}
 };
 
 function setModel(m,btn){
@@ -198,7 +295,20 @@ function setModel(m,btn){
   document.querySelectorAll('#modelPills .pill-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('modelNote').textContent=modelNotes[m];
+  document.getElementById('arimaControls').style.display=m==='arima'?'block':'none';
+  document.getElementById('gamControls').style.display=m==='gam'?'block':'none';
   showModelDef(m);
+}
+
+function setAutoArima(auto,btn){
+  autoArima=auto;
+  document.querySelectorAll('#arimaControls .pill-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('arimaAutoNote').style.display=auto?'block':'none';
+  ['arima_p','arima_d','arima_q'].forEach(id=>{
+    document.getElementById(id).disabled=auto;
+    document.getElementById(id).style.opacity=auto?'0.4':'1';
+  });
 }
 
 function updateLabels(){
@@ -211,8 +321,20 @@ function updateLabels(){
   updateSplitInfo();
 }
 
+function getWorkingObs(allObs){
+  const dataType=document.getElementById('dataType').value;
+  if(dataType==='cumulative'){
+    // difference to get incidence
+    const diff=[];
+    for(let i=1;i<allObs.length;i++) diff.push(Math.max(0,allObs[i]-allObs[i-1]));
+    return diff;
+  }
+  return allObs;
+}
+
 function getSplit(){
-  const allObs=Core.parseData(document.getElementById('dataInput').value);
+  const rawObs=Core.parseData(document.getElementById('dataInput').value);
+  const allObs=getWorkingObs(rawObs);
   const n=allObs.length;
   const start=Math.max(1,parseInt(document.getElementById('fitStart').value)||1);
   const end=Math.min(n,parseInt(document.getElementById('fitEnd').value)||n);
@@ -223,10 +345,12 @@ function getSplit(){
   const testObs=allObs.slice(testStart,testEnd);
   const hasTest=testObs.length>0&&horizon>0;
   const futureHorizon=Math.max(0,horizon-testObs.length);
-  return{allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon,testStart,testEnd};
+  return{rawObs,allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon,testStart,testEnd};
 }
 
 function updateSplitInfo(){
+  const dataType=document.getElementById('dataType').value;
+  document.getElementById('cumulativeNote').style.display=dataType==='cumulative'?'block':'none';
   const{allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon}=getSplit();
   const u=document.getElementById('timeUnit').value.replace('ly','');
   if(n<2){document.getElementById('splitInfo').textContent='Enter data to see split info.';return;}
@@ -250,7 +374,7 @@ function loadDataset(key,btn){
   document.getElementById('diseaseName').value=ds.disease;
   document.getElementById('placeName').value=ds.place;
   document.getElementById('timeUnit').value=ds.unit;
-  // default: fit first ~40% (growth phase), forecast next 4
+  document.getElementById('dataType').value=ds.type||'incidence';
   const n=ds.data.length;
   const trainEnd=Math.max(3,Math.floor(n*0.4));
   document.getElementById('fitStart').value=1;
@@ -260,169 +384,420 @@ function loadDataset(key,btn){
 }
 
 function showModelDef(id){
-  const defs={
-    poisson:{name:'Poisson GLM',eq:'log(E[Iₜ]) = β₀ + β₁·t',
-      def:'A generalized linear model for count data with a log link and Poisson distribution. Assumes variance equals the mean (equidispersion). Each unit increase in time multiplies expected cases by exp(β₁). Growth rate r = β₁; doubling time = ln(2)/β₁.',
-      assumptions:['Count outcome ≥ 0','Var = Mean (equidispersion)','Log-linear mean structure','Independence'],
-      strengths:['Appropriate for count data','Handles zeros','Directly estimates growth rate'],
-      limits:['Equidispersion assumption often violated','Overdispersion → underestimated SEs','Only valid in growth phase']},
-    negbinom:{name:'Negative Binomial GLM',eq:'log(E[Iₜ]) = β₀ + β₁·t, Var = μ + μ²/θ',
-      def:'Extends Poisson by adding dispersion parameter θ, allowing variance to exceed the mean. As θ→∞, approaches Poisson. Robust to overdispersion — the norm in real outbreak data due to superspreading and heterogeneous contact rates.',
-      assumptions:['Count outcome ≥ 0','Overdispersion allowed','Log-linear mean','Independence'],
-      strengths:['Robust to overdispersion','Wider, more honest CIs','Standard for surveillance modeling'],
-      limits:['More complex','θ estimation needs sufficient data','Only valid in growth phase']},
-    linear_log:{name:'Log-linear OLS',eq:'log(Iₜ) = β₀ + β₁·t + εₜ',
-      def:'Ordinary least squares fitted to log-transformed case counts. Equivalent to assuming exponential growth on the original scale. The simplest possible epidemic growth model — useful as a teaching baseline.',
-      assumptions:['Log-normal errors','Exponential growth','Independence','No zeros (log(0) undefined)'],
-      strengths:['Extremely simple','Doubling time direct from β₁','Good teaching baseline'],
-      limits:['Ignores count nature','Cannot handle zeros','Only valid in growth phase','Heteroscedastic residuals']}
-  };
-  const d=defs[id];if(!d)return;
+  const d=modelDefs[id];if(!d)return;
   document.getElementById('modelDefCard').style.display='block';
   document.getElementById('modelDefLabel').textContent=d.name;
   document.getElementById('modelDefContent').innerHTML=`<div class="concept-box">
     <div class="cb-definition"><strong>Definition</strong>${d.def}</div>
     <div class="cb-interpretation"><strong>Equation</strong>
-      <div class="equation-box" style="margin-top:8px"><div class="eq-label">Regression form</div>${d.eq}</div>
+      <div class="equation-box" style="margin-top:8px"><div class="eq-label">Model form</div>${d.eq}</div>
     </div>
     <div class="cb-sowhat">${d.strengths.map(s=>'✓ '+s).join(' · ')}</div>
   </div>
-  <div class="warn-box" style="margin-top:0.75rem">⚠ Assumptions: ${d.assumptions.join(' · ')} &nbsp;|&nbsp; Limitations: ${d.limits.join(' · ')}</div>`;
+  <div class="warn-box" style="margin-top:0.75rem">⚠ Limitations: ${d.limits.join(' · ')}</div>`;
 }
 
-/* ── OLS log-linear ── */
+/* ════════════════════════════════════════
+   FITTING FUNCTIONS
+════════════════════════════════════════ */
+
 function fitLogLinear(t,obs){
   const valid=t.map((ti,i)=>({t:ti,y:obs[i]})).filter(d=>d.y>0);
   if(valid.length<2)throw new Error('Need non-zero counts');
-  const n=valid.length;
-  const sumT=valid.reduce((s,d)=>s+d.t,0);
-  const sumY=valid.reduce((s,d)=>s+Math.log(d.y),0);
-  const sumTY=valid.reduce((s,d)=>s+d.t*Math.log(d.y),0);
-  const sumT2=valid.reduce((s,d)=>s+d.t*d.t,0);
+  const n=valid.length,sumT=valid.reduce((s,d)=>s+d.t,0),sumY=valid.reduce((s,d)=>s+Math.log(d.y),0);
+  const sumTY=valid.reduce((s,d)=>s+d.t*Math.log(d.y),0),sumT2=valid.reduce((s,d)=>s+d.t*d.t,0);
   const b1=(n*sumTY-sumT*sumY)/(n*sumT2-sumT*sumT);
   const b0=(sumY-b1*sumT)/n;
   const pred=t.map(ti=>Math.exp(b0+b1*ti));
   const residuals=valid.map(d=>Math.log(d.y)-(b0+b1*d.t));
   const sse=residuals.reduce((s,r)=>s+r*r,0);
-  const se_b1=Math.sqrt(sse/(n-2)/Math.max(sumT2-sumT*sumT/n,1e-10));
-  return{params:[b0,b1],pred,doublingTime:b1>0?Math.log(2)/b1:null,
-    growthMultiplier:Math.exp(b1),theta:null,
-    aic:2*2-2*(-n/2*(Math.log(2*Math.PI)+Math.log(sse/n)+1))};
+  const ll=-n/2*(Math.log(2*Math.PI)+Math.log(sse/n)+1);
+  return{params:[b0,b1],pred,theta:null,doublingTime:b1>0?Math.log(2)/b1:null,
+    growthMultiplier:Math.exp(b1),aic:2*2-2*ll,
+    paramNames:['β₀ (intercept)','β₁ (slope)'],
+    paramDescs:['Log-scale intercept. exp(β₀) = estimated cases at t=0','Growth rate. exp(β₁) = '+Core.fmt(Math.exp(b1),4)+' × per period']};
 }
 
-/* ── Poisson IRLS ── */
 function fitPoisson(t,obs){
   let b0=Math.log(Math.max(Core.mean(obs),1)),b1=0.1;
   for(let iter=0;iter<300;iter++){
     const mu=t.map(ti=>Math.exp(b0+b1*ti));
-    const W=mu;
-    const z=t.map((ti,i)=>b0+b1*ti+(obs[i]-mu[i])/mu[i]);
-    const sw=W.reduce((a,b)=>a+b,0);
-    const swt=W.reduce((s,w,i)=>s+w*t[i],0);
-    const swz=W.reduce((s,w,i)=>s+w*z[i],0);
-    const swtz=W.reduce((s,w,i)=>s+w*t[i]*z[i],0);
-    const swt2=W.reduce((s,w,i)=>s+w*t[i]*t[i],0);
-    const det=sw*swt2-swt*swt;
-    if(Math.abs(det)<1e-15)break;
-    const nb0=(swz*swt2-swtz*swt)/det;
-    const nb1=(sw*swtz-swt*swz)/det;
+    const sw=mu.reduce((a,b)=>a+b,0);
+    const swt=mu.reduce((s,w,i)=>s+w*t[i],0);
+    const swz=mu.reduce((s,w,i)=>s+w*(b0+b1*t[i]+(obs[i]-mu[i])/mu[i]),0);
+    const swtz=mu.reduce((s,w,i)=>s+w*t[i]*(b0+b1*t[i]+(obs[i]-mu[i])/mu[i]),0);
+    const swt2=mu.reduce((s,w,i)=>s+w*t[i]*t[i],0);
+    const det=sw*swt2-swt*swt;if(Math.abs(det)<1e-15)break;
+    const nb0=(swz*swt2-swtz*swt)/det,nb1=(sw*swtz-swt*swz)/det;
     if(Math.abs(nb0-b0)<1e-10&&Math.abs(nb1-b1)<1e-10)break;
     b0=nb0;b1=nb1;
   }
   const mu=t.map(ti=>Math.exp(b0+b1*ti));
-  const n=obs.length;
-  const sw=mu.reduce((a,b)=>a+b,0);
-  const swt=mu.reduce((s,w,i)=>s+w*t[i],0);
-  const swt2=mu.reduce((s,w,i)=>s+w*t[i]*t[i],0);
-  const det=sw*swt2-swt*swt;
   const ll=obs.reduce((s,o,i)=>s+o*Math.log(Math.max(mu[i],1e-10))-mu[i],0);
-  return{params:[b0,b1],pred:mu,doublingTime:b1>0?Math.log(2)/b1:null,
-    growthMultiplier:Math.exp(b1),theta:null,aic:2*2-2*ll,loglik:ll};
+  return{params:[b0,b1],pred:mu,theta:null,doublingTime:b1>0?Math.log(2)/b1:null,
+    growthMultiplier:Math.exp(b1),aic:2*2-2*ll,
+    paramNames:['β₀ (intercept)','β₁ (slope)'],
+    paramDescs:['Log-scale intercept','Growth rate. exp(β₁) = '+Core.fmt(Math.exp(b1),4)+' × per period']};
 }
 
-/* ── Negative Binomial ── */
 function fitNegBinom(t,obs){
-  function logGammaA(x){if(x<=0)return 0;if(x<1)return logGammaA(x+1)-Math.log(x);let s=0;let xi=x;while(xi<10){s-=Math.log(xi);xi++;}return s+(xi-0.5)*Math.log(xi)-xi+0.5*Math.log(2*Math.PI)+1/(12*xi);}
-  function fitForTheta(theta){
+  function lgA(x){if(x<=0)return 0;if(x<1)return lgA(x+1)-Math.log(x);let s=0,xi=x;while(xi<10){s-=Math.log(xi);xi++;}return s+(xi-0.5)*Math.log(xi)-xi+0.5*Math.log(2*Math.PI)+1/(12*xi);}
+  function fitT(theta){
     let b0=Math.log(Math.max(Core.mean(obs),1)),b1=0.1;
     for(let iter=0;iter<200;iter++){
       const mu=t.map(ti=>Math.exp(b0+b1*ti));
       const W=mu.map((m,i)=>(obs[i]+theta)/(m+theta));
-      const z=t.map((ti,i)=>b0+b1*ti+(obs[i]-mu[i])/(mu[i]*W[i]));
       const wt=mu.map((m,i)=>m*W[i]);
-      const sw=wt.reduce((a,b)=>a+b,0);
-      const swt=wt.reduce((s,w,i)=>s+w*t[i],0);
-      const swz=wt.reduce((s,w,i)=>s+w*z[i],0);
-      const swtz=wt.reduce((s,w,i)=>s+w*t[i]*z[i],0);
+      const z=t.map((ti,i)=>b0+b1*ti+(obs[i]-mu[i])/(mu[i]*W[i]));
+      const sw=wt.reduce((a,b)=>a+b,0),swt=wt.reduce((s,w,i)=>s+w*t[i],0);
+      const swz=wt.reduce((s,w,i)=>s+w*z[i],0),swtz=wt.reduce((s,w,i)=>s+w*t[i]*z[i],0);
       const swt2=wt.reduce((s,w,i)=>s+w*t[i]*t[i],0);
       const det=sw*swt2-swt*swt;if(Math.abs(det)<1e-15)break;
-      const nb0=(swz*swt2-swtz*swt)/det;
-      const nb1=(sw*swtz-swt*swz)/det;
+      const nb0=(swz*swt2-swtz*swt)/det,nb1=(sw*swtz-swt*swz)/det;
       if(Math.abs(nb0-b0)<1e-10&&Math.abs(nb1-b1)<1e-10)break;
       b0=nb0;b1=nb1;
     }
     const mu=t.map(ti=>Math.exp(b0+b1*ti));
-    const ll=obs.reduce((s,o,i)=>{
-      const m=mu[i];
-      return s+logGammaA(o+theta)-logGammaA(theta)-logGammaA(o+1)
-        +theta*Math.log(theta/(theta+m))+o*Math.log(m/(theta+m));
-    },0);
+    const ll=obs.reduce((s,o,i)=>{const m=mu[i];return s+lgA(o+theta)-lgA(theta)-lgA(o+1)+theta*Math.log(theta/(theta+m))+o*Math.log(m/(theta+m));},0);
     return{b0,b1,mu,ll};
   }
-  const thetas=[0.1,0.3,0.5,1,2,5,10,20,50,100,500];
   let best={ll:-Infinity,theta:1,b0:0,b1:0.1,mu:[]};
-  thetas.forEach(th=>{try{const r=fitForTheta(th);if(r.ll>best.ll)best={...r,theta:th};}catch(e){}});
+  [0.1,0.3,0.5,1,2,5,10,20,50,100,500].forEach(th=>{try{const r=fitT(th);if(r.ll>best.ll)best={...r,theta:th};}catch(e){}});
   return{params:[best.b0,best.b1],pred:best.mu,theta:best.theta,
     doublingTime:best.b1>0?Math.log(2)/best.b1:null,
-    growthMultiplier:Math.exp(best.b1),
-    aic:2*3-2*best.ll,loglik:best.ll};
+    growthMultiplier:Math.exp(best.b1),aic:2*3-2*best.ll,
+    paramNames:['β₀ (intercept)','β₁ (slope)','θ (dispersion)'],
+    paramDescs:['Log-scale intercept','Growth rate. exp(β₁) = '+Core.fmt(Math.exp(best.b1),4)+' × per period','NB dispersion. θ→∞=Poisson. Small θ=superspreading']};
+}
+
+/* ── ARIMA ── */
+function difference(arr,d){let x=arr.slice();for(let i=0;i<d;i++){const dx=[];for(let j=1;j<x.length;j++)dx.push(x[j]-x[j-1]);x=dx;}return x;}
+function undifference(diffs,orig,d){
+  let x=diffs.slice();
+  for(let i=0;i<d;i++){
+    const ud=[orig[orig.length-d+i]];
+    for(let j=0;j<x.length;j++)ud.push(ud[ud.length-1]+x[j]);
+    x=ud.slice(1);
+  }
+  return x;
+}
+
+function fitARIMA(t,obs,p,d,q){
+  const diffed=difference(obs,d);
+  const n=diffed.length;
+  if(n<p+q+2)throw new Error('Not enough data for this order');
+  // Fit via OLS on design matrix [lagged values, lagged residuals]
+  // Start with OLS estimate ignoring MA terms, then iterate
+  const m=Math.max(p,q);
+  if(n-m<2)throw new Error('Not enough data after lagging');
+
+  // Build AR design matrix
+  const Y=diffed.slice(m);
+  const X=Y.map((_,i)=>{
+    const row=[1]; // intercept
+    for(let j=1;j<=p;j++)row.push(diffed[m+i-j]||0);
+    return row;
+  });
+
+  // OLS: β = (X'X)^{-1} X'y
+  function matMul(A,B){
+    const r=A.length,c=B[0].length,k=B.length;
+    return Array.from({length:r},(_,i)=>Array.from({length:c},(_,j)=>A[i].reduce((s,_,l)=>s+A[i][l]*B[l][j],0)));
+  }
+  function matTrans(A){return A[0].map((_,i)=>A.map(r=>r[i]));}
+  function matInv2x2(A){const det=A[0][0]*A[1][1]-A[0][1]*A[1][0];return[[A[1][1]/det,-A[0][1]/det],[-A[1][0]/det,A[0][0]/det]];}
+
+  // Simple OLS via normal equations for small matrices
+  function olsSolve(X,y){
+    const Xt=matTrans(X);
+    const XtX=matMul(Xt,X);
+    const Xty=matMul(Xt,y.map(v=>[v]));
+    // Use Gaussian elimination for stability
+    const n=XtX.length;
+    const aug=XtX.map((row,i)=>[...row,Xty[i][0]]);
+    for(let i=0;i<n;i++){
+      let max=i;for(let j=i+1;j<n;j++)if(Math.abs(aug[j][i])>Math.abs(aug[max][i]))max=j;
+      [aug[i],aug[max]]=[aug[max],aug[i]];
+      for(let j=i+1;j<n;j++){const f=aug[j][i]/aug[i][i];for(let k=i;k<=n;k++)aug[j][k]-=f*aug[i][k];}
+    }
+    const x=new Array(n).fill(0);
+    for(let i=n-1;i>=0;i--){x[i]=aug[i][n];for(let j=i+1;j<n;j++)x[i]-=aug[i][j]*x[j];x[i]/=aug[i][i];}
+    return x;
+  }
+
+  const beta=olsSolve(X,Y);
+  const mu_d=beta[0]; // intercept on differenced scale
+  const arCoefs=beta.slice(1,p+1);
+
+  // Fitted values on differenced scale
+  const fitted_d=X.map(row=>row.reduce((s,v,i)=>s+v*beta[i],0));
+  const resid_d=Y.map((y,i)=>y-fitted_d[i]);
+
+  // Reconstruct fitted on original scale
+  const fitted_pad=new Array(m).fill(diffed[0]).concat(fitted_d);
+  const fitted_orig=undifference(fitted_pad,obs,d).slice(0,obs.length);
+
+  // Forecast h steps
+  function forecast(h){
+    const ext=diffed.slice();
+    const forecasts=[];
+    for(let i=0;i<h;i++){
+      let val=mu_d;
+      for(let j=0;j<p;j++)val+=(arCoefs[j]||0)*(ext[ext.length-1-j]||0);
+      ext.push(val);forecasts.push(val);
+    }
+    return undifference(forecasts,obs,d);
+  }
+
+  const sse=resid_d.reduce((s,r)=>s+r*r,0);
+  const k=p+q+1+(d>0?1:0);
+  const ll_approx=-Y.length/2*(Math.log(2*Math.PI)+Math.log(Math.max(sse/Y.length,1e-10))+1);
+  const aic=2*k-2*ll_approx;
+
+  return{params:beta,pred:fitted_orig,forecast,arCoefs,mu_d,theta:null,
+    doublingTime:null,growthMultiplier:null,aic,
+    selectedOrder:{p,d,q},
+    paramNames:[`μ (intercept, differenced)`, ...Array.from({length:p},(_,i)=>`AR(${i+1}) coefficient`)],
+    paramDescs:[`Mean of the differenced series`,...Array.from({length:p},(_,i)=>`Weight on value lagged by ${i+1} period${i>0?'s':''}. Positive = persistence, negative = oscillation`)]};
+}
+
+function autoARIMA(t,obs){
+  let best={aic:Infinity,p:1,d:1,q:1,result:null};
+  for(let p=0;p<=3;p++)for(let d=0;d<=2;d++)for(let q=0;q<=2;q++){
+    try{
+      const r=fitARIMA(t,obs,p,d,q);
+      if(r.aic<best.aic){best={aic:r.aic,p,d,q,result:r};}
+    }catch(e){}
+  }
+  if(!best.result)throw new Error('Auto-ARIMA failed');
+  // Update UI fields
+  document.getElementById('arima_p').value=best.p;
+  document.getElementById('arima_d').value=best.d;
+  document.getElementById('arima_q').value=best.q;
+  return best.result;
+}
+
+/* ── GAM via B-splines ── */
+function bsplineBasis(t,df){
+  const n=t.length,tmin=Math.min(...t),tmax=Math.max(...t);
+  const knots=Array.from({length:df-1},(_,i)=>tmin+(tmax-tmin)*(i+1)/df);
+  // Natural cubic spline basis via truncated power basis
+  const X=t.map(ti=>{
+    const row=[1,ti];
+    knots.forEach(k=>{const v=ti-k;row.push(v>0?v*v*v:0);});
+    return row;
+  });
+  return X;
+}
+
+function fitGAM(t,obs,df=6){
+  const X=bsplineBasis(t,df);
+  function olsSolve(X,y){
+    const Xt=X[0].map((_,i)=>X.map(r=>r[i]));
+    const XtX=Xt.map(row=>row.map((_,j)=>row.reduce((s,_,k)=>s+Xt[row.indexOf?row.indexOf(_):0][k]*Xt[j][k],0)));
+    // Use simple pseudo-inverse via normal equations
+    const n=X.length,p=X[0].length;
+    const A=Array.from({length:p},(_,i)=>Array.from({length:p},(_,j)=>X.reduce((s,row)=>s+row[i]*row[j],0)));
+    const b=Array.from({length:p},(_,i)=>X.reduce((s,row,k)=>s+row[i]*y[k],0));
+    // Gaussian elimination
+    const aug=A.map((row,i)=>[...row,b[i]]);
+    for(let i=0;i<p;i++){
+      let max=i;for(let j=i+1;j<p;j++)if(Math.abs(aug[j][i])>Math.abs(aug[max][i]))max=j;
+      [aug[i],aug[max]]=[aug[max],aug[i]];
+      for(let j=i+1;j<p;j++){if(Math.abs(aug[i][i])<1e-12)continue;const f=aug[j][i]/aug[i][i];for(let k=i;k<=p;k++)aug[j][k]-=f*aug[i][k];}
+    }
+    const x=new Array(p).fill(0);
+    for(let i=p-1;i>=0;i--){x[i]=aug[i][p];for(let j=i+1;j<p;j++)x[i]-=aug[i][j]*x[j];if(Math.abs(aug[i][i])>1e-12)x[i]/=aug[i][i];}
+    return x;
+  }
+  const beta=olsSolve(X,obs);
+  const pred=X.map(row=>Math.max(0,row.reduce((s,v,i)=>s+v*beta[i],0)));
+  const sse=obs.reduce((s,o,i)=>s+(o-pred[i])**2,0);
+  const ll=-obs.length/2*(Math.log(2*Math.PI)+Math.log(Math.max(sse/obs.length,1e-10))+1);
+  const aic=2*(df+1)-2*ll;
+
+  // Forecast: extend spline basis
+  function forecast(h){
+    const tmax=Math.max(...t);
+    const fT=Array.from({length:h},(_,i)=>tmax+1+i);
+    const fX=bsplineBasis([...t,...fT],df).slice(t.length);
+    return fX.map(row=>Math.max(0,row.reduce((s,v,i)=>s+v*beta[i],0)));
+  }
+
+  return{params:beta,pred,forecast,theta:null,doublingTime:null,growthMultiplier:null,
+    aic,selectedDf:df,
+    paramNames:['Intercept',...Array.from({length:beta.length-1},(_,i)=>`Spline coef ${i+1}`)],
+    paramDescs:['Baseline level',...Array.from({length:beta.length-1},()=>'B-spline basis coefficient (not directly interpretable)')]};
+}
+
+/* ── Bootstrap for statistical models ── */
+function runStatBootstrap(fitter,t,obs,baseResult,nBoot,onProgress){
+  const basePred=baseResult.pred;
+  const residuals=obs.map((o,i)=>o-basePred[i]);
+  const bootParams=[],bootPreds=[];
+  for(let b=0;b<nBoot;b++){
+    try{
+      const bootObs=basePred.map(p=>{const r=residuals[Math.floor(Math.random()*obs.length)];return Math.max(0,p+r);});
+      const res=fitter(t,bootObs);
+      bootParams.push(res.params);
+      bootPreds.push(res.pred);
+    }catch(e){}
+    if(onProgress&&b%10===0)onProgress(b/nBoot);
+  }
+  if(bootParams.length<10)return null;
+  const paramCI=baseResult.params.map((_,j)=>{
+    const vals=bootParams.map(p=>p[j]).filter(isFinite).sort((a,b)=>a-b);
+    return{lo:vals[Math.floor(0.025*vals.length)]||0,hi:vals[Math.floor(0.975*vals.length)]||0,samples:vals};
+  });
+  const predCI=t.map((_,i)=>{
+    const vals=bootPreds.map(p=>p[i]).filter(isFinite).sort((a,b)=>a-b);
+    return{lo:Math.max(0,vals[Math.floor(0.025*vals.length)]||0),hi:vals[Math.floor(0.975*vals.length)]||0};
+  });
+  return{paramCI,predCI,nBoot:bootParams.length,bootParams,bootPreds};
+}
+
+/* ════════════════════════════════════════
+   MAIN RUN FIT
+════════════════════════════════════════ */
+function getFitter(){
+  if(currentModel==='linear_log')return(t,obs)=>fitLogLinear(t,obs);
+  if(currentModel==='poisson')return(t,obs)=>fitPoisson(t,obs);
+  if(currentModel==='negbinom')return(t,obs)=>fitNegBinom(t,obs);
+  if(currentModel==='gam'){const df=parseInt(document.getElementById('gam_df').value)||6;return(t,obs)=>fitGAM(t,obs,df);}
+  if(currentModel==='arima'){
+    if(autoArima)return(t,obs)=>autoARIMA(t,obs);
+    const p=parseInt(document.getElementById('arima_p').value)||1;
+    const d=parseInt(document.getElementById('arima_d').value)||1;
+    const q=parseInt(document.getElementById('arima_q').value)||1;
+    return(t,obs)=>fitARIMA(t,obs,p,d,q);
+  }
+  return(t,obs)=>fitPoisson(t,obs);
 }
 
 function runFit(){
   const split=getSplit();
-  const{trainObs,testObs,hasTest,horizon,start,end,testStart,allObs}=split;
+  const{allObs,trainObs,testObs,hasTest,horizon,start,end,testStart}=split;
   if(trainObs.length<3){document.getElementById('fitStatus').textContent='Need at least 3 training points.';return;}
   document.getElementById('fitBtn').disabled=true;
+  document.getElementById('compareBtn').disabled=true;
   document.getElementById('fitStatus').textContent='Fitting…';
+
   setTimeout(()=>{
     try{
       const t=trainObs.map((_,i)=>i);
-      let res;
-      if(currentModel==='linear_log')res=fitLogLinear(t,trainObs);
-      else if(currentModel==='poisson')res=fitPoisson(t,trainObs);
-      else res=fitNegBinom(t,trainObs);
-
+      const fitter=getFitter();
+      const res=fitter(t,trainObs);
       const trainPred=res.pred;
-      const forecastT=Array.from({length:horizon},(_,i)=>t.length+i);
-      const forecastPred=forecastT.map(ti=>Math.max(0,Math.exp(res.params[0]+res.params[1]*ti)));
+
+      // Forecast
+      let forecastPred=[];
+      if(horizon>0){
+        if(res.forecast){
+          forecastPred=res.forecast(horizon).map(v=>Math.max(0,v));
+        } else {
+          forecastPred=Array.from({length:horizon},(_,i)=>Math.max(0,Math.exp(res.params[0]+res.params[1]*(t.length+i))));
+        }
+      }
       const testPred=forecastPred.slice(0,testObs.length);
 
-      document.getElementById('fitStatus').textContent='Fitted ✓';
-      document.getElementById('fitBtn').disabled=false;
-      showResults({model:currentModel,allObs,trainObs,t,trainPred,testObs,testPred,
-        hasTest,horizon,forecastT,forecastPred,params:res.params,
-        theta:res.theta,doublingTime:res.doublingTime,growthMultiplier:res.growthMultiplier,
-        aic:res.aic,start,end,testStart,futureHorizon:split.futureHorizon});
-      showModelDef(currentModel);
+      const ctx={model:currentModel,modelRes:res,allObs,trainObs,t,trainPred,testObs,testPred,
+        hasTest,horizon,forecastPred,params:res.params,start,end,testStart,
+        futureHorizon:split.futureHorizon};
+
+      const nBoot=parseInt(document.getElementById('bootN').value)||0;
+      if(nBoot>0){
+        document.getElementById('fitStatus').textContent='Fitted ✓ — running bootstrap…';
+        document.getElementById('progressWrap').style.display='block';
+        setTimeout(()=>{
+          const bootResult=runStatBootstrap(fitter,t,trainObs,res,nBoot,(p)=>{
+            document.getElementById('progressBar').style.width=(p*100)+'%';
+            document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot}…`;
+          });
+          document.getElementById('progressBar').style.width='100%';
+          document.getElementById('progressLabel').textContent='';
+          document.getElementById('progressWrap').style.display='none';
+          if(bootResult){
+            document.getElementById('fitStatus').textContent=`Fitted ✓ with ${bootResult.nBoot}-iteration bootstrap CIs`;
+            // Forecast PI from bootstrap
+            if(horizon>0&&bootResult.bootPreds){
+              bootResult.forecastCI=Array.from({length:testObs.length},(_,i)=>{
+                const vals=bootResult.bootPreds.map(bp=>{
+                  // re-run forecast with each boot model — use simple extrapolation
+                  if(res.forecast){return Math.max(0,res.forecast(horizon)[i]||0);}
+                  return Math.max(0,Math.exp((bootResult.bootParams[0]||res.params)[0]+(bootResult.bootParams[0]||res.params)[1]*(t.length+i)));
+                }).filter(isFinite).sort((a,b)=>a-b);
+                return{lo:Math.max(0,vals[Math.floor(0.025*vals.length)]||0),hi:vals[Math.floor(0.975*vals.length)]||0};
+              });
+            }
+          } else {
+            document.getElementById('fitStatus').textContent='Fitted ✓ — bootstrap failed';
+          }
+          document.getElementById('fitBtn').disabled=false;
+          document.getElementById('compareBtn').disabled=false;
+          showResults(ctx,bootResult);
+          showBootPanel(res,bootResult);
+          showModelDef(currentModel);
+        },20);
+      } else {
+        document.getElementById('fitStatus').textContent='Fitted ✓';
+        document.getElementById('fitBtn').disabled=false;
+        document.getElementById('compareBtn').disabled=false;
+        showResults(ctx,null);
+        showModelDef(currentModel);
+      }
     }catch(e){
       document.getElementById('fitStatus').textContent='Fit failed — '+e.message;
       document.getElementById('fitBtn').disabled=false;
+      document.getElementById('compareBtn').disabled=false;
+      console.error(e);
     }
   },10);
 }
 
-function showResults(ctx){
-  const{model,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,horizon,
-    forecastT,forecastPred,params,theta,doublingTime,growthMultiplier,aic,start,end,testStart}=ctx;
+function showBootPanel(res,bootResult){
+  if(!bootResult)return;
+  document.getElementById('bootCard').style.display='block';
+  const showParams=res.params.slice(0,Math.min(res.params.length,res.paramNames?res.paramNames.length:3));
+  document.getElementById('bootSummary').innerHTML=`
+    <table class="param-table" style="margin-bottom:12px">
+      <thead><tr><th>Parameter</th><th>Estimate</th><th>95% CI lower</th><th>95% CI upper</th><th>Width</th></tr></thead>
+      <tbody>${showParams.map((p,i)=>`<tr>
+        <td class="p-name">${res.paramNames?res.paramNames[i]:`param_${i}`}</td>
+        <td>${Core.fmt(p,4)}</td>
+        <td>${Core.fmt(bootResult.paramCI[i]?.lo||0,4)}</td>
+        <td>${Core.fmt(bootResult.paramCI[i]?.hi||0,4)}</td>
+        <td>${Core.fmt((bootResult.paramCI[i]?.hi||0)-(bootResult.paramCI[i]?.lo||0),4)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  const histEl=document.getElementById('paramHistograms');histEl.innerHTML='';
+  showParams.forEach((p,i)=>{
+    if(!bootResult.paramCI[i]?.samples?.length)return;
+    const div=document.createElement('div');
+    div.style.cssText='background:var(--bg-secondary);border-radius:8px;padding:8px';
+    div.innerHTML=`<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">${res.paramNames?res.paramNames[i]:`Param ${i}`}</div><div id="shist_${i}" style="height:150px"></div>`;
+    histEl.appendChild(div);
+    Plotly.newPlot(`shist_${i}`,[
+      {x:bootResult.paramCI[i].samples,type:'histogram',nbinsx:25,marker:{color:'rgba(24,95,165,0.5)',line:{color:'rgba(24,95,165,0.8)',width:0.5}}},
+      {x:[p,p],y:[0,bootResult.paramCI[i].samples.length*0.15],type:'scatter',mode:'lines',line:{color:'#E05C2A',width:2,dash:'dash'},showlegend:false}
+    ],{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:10,color:'#5a5a56'},
+      xaxis:{gridcolor:'rgba(0,0,0,0.05)',zeroline:false},yaxis:{title:'Count',gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
+      showlegend:false,margin:{t:5,r:5,b:30,l:40}},{responsive:true,displayModeBar:false});
+  });
+}
+
+function showResults(ctx,bootResult){
+  const{model,modelRes,allObs,trainObs,t,trainPred,testObs,testPred,
+    hasTest,horizon,forecastPred,params,start,end,testStart}=ctx;
   const S=Core;
   const disease=document.getElementById('diseaseName').value||'Disease';
   const place=document.getElementById('placeName').value||'Location';
   const unit=document.getElementById('timeUnit').value;
   const unitLabel=unit.replace('ly','');
+  const dataType=document.getElementById('dataType').value;
+  const modelLabel=modelDefs[model]?.name||model;
 
   document.getElementById('resultsArea').style.display='block';
-  document.getElementById('chartLabel').textContent=
-    `${model==='poisson'?'Poisson GLM':model==='negbinom'?'Negative Binomial GLM':'Log-linear OLS'} — ${disease}, ${place}`;
+  document.getElementById('chartLabel').textContent=`${modelLabel} — ${disease}, ${place}${dataType==='cumulative'?' (differenced)':''}`;
 
   const allLabels=S.timeLabels(allObs.length,unit);
   const trainLabels=allLabels.slice(start-1,end);
@@ -430,40 +805,47 @@ function showResults(ctx){
   const foreLabels=S.timeLabels(t.length+horizon,unit).slice(t.length);
 
   const traces=[];
+  if(bootResult?.predCI){
+    traces.push({x:[...trainLabels,...trainLabels.slice().reverse()],
+      y:[...bootResult.predCI.map(c=>c.hi),...bootResult.predCI.map(c=>c.lo).reverse()],
+      fill:'toself',fillcolor:'rgba(24,95,165,0.1)',line:{color:'transparent'},name:'95% CI (bootstrap)',type:'scatter'});
+  }
   traces.push({x:allLabels,y:allObs,mode:'markers',name:'All observed',marker:{color:'rgba(90,90,86,0.2)',size:5},type:'scatter'});
   traces.push({x:trainLabels,y:trainObs,mode:'markers',name:'Training',marker:{color:'var(--accent)',size:7},type:'scatter'});
-  traces.push({x:trainLabels,y:trainPred,mode:'lines',name:'Fitted',line:{color:'#E05C2A',width:2.5},type:'scatter'});
+  traces.push({x:trainLabels,y:trainPred,mode:'lines',name:`${modelLabel} fit`,line:{color:'#E05C2A',width:2.5},type:'scatter'});
   if(horizon>0){
     traces.push({x:foreLabels,y:forecastPred,mode:'lines',name:'Forecast',line:{color:'#E05C2A',width:2,dash:'dash'},type:'scatter'});
+    if(bootResult?.forecastCI){
+      traces.push({x:[...foreLabels.slice(0,bootResult.forecastCI.length),...foreLabels.slice(0,bootResult.forecastCI.length).reverse()],
+        y:[...bootResult.forecastCI.map(c=>c.hi),...bootResult.forecastCI.map(c=>c.lo).reverse()],
+        fill:'toself',fillcolor:'rgba(224,92,42,0.1)',line:{color:'transparent'},name:'Forecast 95% PI',type:'scatter'});
+    }
   }
   if(hasTest&&testObs.length>0){
     traces.push({x:testLabels,y:testObs,mode:'markers',name:'Hold-out observed',marker:{color:'#0A5C36',size:9,symbol:'diamond'},type:'scatter'});
   }
   const shapes=horizon>0?[{type:'line',x0:trainLabels[trainLabels.length-1],x1:trainLabels[trainLabels.length-1],y0:0,y1:1,yref:'paper',line:{color:'rgba(0,0,0,0.2)',dash:'dot',width:1.5}}]:[];
-
   Plotly.newPlot('fitChart',traces,{
-    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
-    font:{family:'DM Sans',size:12,color:'#5a5a56'},
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:12,color:'#5a5a56'},
     xaxis:{title:`Time (${unit})`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
-    yaxis:{title:`${disease} cases`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
-    legend:{orientation:'h',y:-0.25},shapes,
-    margin:{t:20,r:20,b:80,l:60}
+    yaxis:{title:`${disease} cases${dataType==='cumulative'?' (incidence after differencing)':''}`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+    legend:{orientation:'h',y:-0.25},shapes,margin:{t:20,r:20,b:80,l:60}
   },{responsive:true,displayModeBar:false});
 
   document.getElementById('chartLegendNote').innerHTML=
     `<span class="split-badge train">Training: periods ${start}–${end}</span>`+
-    (horizon>0?`<span class="split-badge future">Forecast: +${horizon} ${unitLabel}s</span>`:'') +
+    (horizon>0?`<span class="split-badge future">Forecast: +${horizon} ${unitLabel}s</span>`:'')+
     (hasTest?`<span class="split-badge test">Hold-out: ${testObs.length} observed</span>`:'');
 
-  // Residuals chart
+  // Residuals
   const residuals=trainObs.map((o,i)=>o-trainPred[i]);
   Plotly.newPlot('residualChart',[
     {x:trainLabels,y:residuals,mode:'markers+lines',marker:{color:'var(--accent)',size:6},line:{color:'rgba(24,95,165,0.3)',width:1},name:'Residuals'},
     {x:[trainLabels[0],trainLabels[trainLabels.length-1]],y:[0,0],mode:'lines',line:{color:'#ccc',dash:'dash'},showlegend:false}
   ],{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:11,color:'#5a5a56'},
     xaxis:{title:`Time (${unit})`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
-    yaxis:{title:'Residuals',gridcolor:'rgba(0,0,0,0.06)'},
-    showlegend:false,margin:{t:10,r:20,b:50,l:60}},{responsive:true,displayModeBar:false});
+    yaxis:{title:'Residuals',gridcolor:'rgba(0,0,0,0.06)'},showlegend:false,margin:{t:10,r:20,b:50,l:60}
+  },{responsive:true,displayModeBar:false});
 
   // Dispersion
   const vmr_v=S.vmr(trainObs),disp=S.dispersionLabel(vmr_v);
@@ -471,34 +853,47 @@ function showResults(ctx){
     S.fullMetricCard('vmr',S.fmt2(vmr_v),`VMR = <strong>${S.fmt2(vmr_v)}</strong>. ${disp.interpretation}`)+
     `<div class="${vmr_v>1.5?'warn-box':'info-box'}" style="margin-top:0.75rem">
       <strong>${disp.label}</strong> — ${disp.model}.
-      ${currentModel==='poisson'&&vmr_v>1.5?' ⚠ Poisson on overdispersed data — CIs may be too narrow. Switch to <strong>Negative Binomial</strong>.':''}
-      ${currentModel==='negbinom'&&vmr_v<=1.2?' ✓ NB is more flexible than needed here; Poisson may suffice.':''}
+      ${model==='poisson'&&vmr_v>1.5?' ⚠ Switch to <strong>Negative Binomial</strong>.':''}
+      ${model==='negbinom'&&vmr_v<=1.2?' ✓ NB is more flexible than needed; Poisson may suffice.':''}
     </div>`;
 
   // Parameters
-  const modelName=model==='poisson'?'Poisson':model==='negbinom'?'NB':'OLS';
+  const showParams=params.slice(0,Math.min(params.length,modelRes.paramNames?modelRes.paramNames.length:3));
+  let paramRows=showParams.map((p,i)=>{
+    const ci=bootResult?.paramCI[i]?` <span style="font-size:11px;color:var(--text-tertiary)">[${S.fmt(bootResult.paramCI[i].lo,3)}, ${S.fmt(bootResult.paramCI[i].hi,3)}]</span>`:'';
+    return`<tr><td class="p-name">${modelRes.paramNames?modelRes.paramNames[i]:`param_${i}`}</td><td>${S.fmt(p,4)}${ci}</td><td class="p-desc">${modelRes.paramDescs?modelRes.paramDescs[i]:''}</td></tr>`;
+  }).join('');
+  if(modelRes.doublingTime){
+    paramRows+=`<tr><td class="p-name">Doubling time</td><td>${S.fmt(modelRes.doublingTime,2)} ${unitLabel}s</td><td class="p-desc">ln(2)/β₁</td></tr>`;
+  }
+  if(modelRes.growthMultiplier){
+    paramRows+=`<tr><td class="p-name">Growth multiplier (exp β₁)</td><td>${S.fmt(modelRes.growthMultiplier,4)}</td><td class="p-desc">Cases × this factor each ${unitLabel}</td></tr>`;
+  }
+  if(modelRes.theta!==null&&modelRes.theta!==undefined){
+    paramRows+=`<tr><td class="p-name">θ (NB dispersion)</td><td>${S.fmt(modelRes.theta,3)}</td><td class="p-desc">θ→∞ = Poisson. Small θ = overdispersion / superspreading</td></tr>`;
+  }
+  if(modelRes.selectedOrder){
+    const{p,d,q}=modelRes.selectedOrder;
+    paramRows+=`<tr><td class="p-name">ARIMA order</td><td>p=${p}, d=${d}, q=${q}</td><td class="p-desc">${autoArima?'Auto-selected by AIC':'User-specified'}</td></tr>`;
+  }
+  if(modelRes.selectedDf){
+    paramRows+=`<tr><td class="p-name">GAM degrees of freedom</td><td>${modelRes.selectedDf}</td><td class="p-desc">Smoothness of the spline fit</td></tr>`;
+  }
   document.getElementById('paramResults').innerHTML=`
-    <table class="param-table">
-      <thead><tr><th>Parameter</th><th>Estimate</th><th>Description</th></tr></thead>
-      <tbody>
-        <tr><td class="p-name">β₀ (intercept)</td><td>${S.fmt(params[0],4)}</td><td class="p-desc">Log-scale intercept. exp(β₀) = estimated cases at t=0</td></tr>
-        <tr><td class="p-name">β₁ (slope)</td><td>${S.fmt(params[1],4)}</td><td class="p-desc">Log-scale growth rate. exp(β₁) = ${S.fmt(growthMultiplier,4)} — cases multiply by this factor each ${unitLabel}</td></tr>
-        ${theta!==null?`<tr><td class="p-name">θ (NB dispersion)</td><td>${S.fmt(theta,3)}</td><td class="p-desc">NB dispersion. θ→∞ = Poisson. Small θ = overdispersion / superspreading signature</td></tr>`:''}
-        ${doublingTime?`<tr><td class="p-name">Doubling time</td><td>${S.fmt(doublingTime,2)} ${unitLabel}s</td><td class="p-desc">ln(2)/β₁ — time for cases to double</td></tr>`:''}
-      </tbody>
-    </table>`;
+    <table class="param-table"><thead><tr><th>Parameter</th><th>Estimate${bootResult?' (95% CI)':''}</th><th>Description</th></tr></thead><tbody>${paramRows}</tbody></table>
+    <p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">${bootResult?`95% CI from ${bootResult.nBoot}-iteration residual bootstrap.`:'Set bootstrap iterations > 0 to get CIs.'}</p>`;
 
   // Training metrics
-  const k=theta!==null?3:2;
+  const k=showParams.length;
   const mae_v=S.mae(trainObs,trainPred),rmse_v=S.rmse(trainObs,trainPred);
   const mape_v=S.mape(trainObs,trainPred),r2_v=S.rSquared(trainObs,trainPred);
   const bic_v=S.bic(trainObs,trainPred,k);
   document.getElementById('metricsResults').innerHTML=
-    S.fullMetricCard('rmse',S.fmt2(rmse_v),`Training RMSE = <strong>${S.fmt2(rmse_v)}</strong> cases per ${unitLabel} (${disease}, ${place}).`)+
+    S.fullMetricCard('rmse',S.fmt2(rmse_v),`Training RMSE = <strong>${S.fmt2(rmse_v)}</strong> cases per ${unitLabel}.`)+
     S.fullMetricCard('mae',S.fmt2(mae_v),`Training MAE = <strong>${S.fmt2(mae_v)}</strong>.`)+
-    S.fullMetricCard('mape',mape_v!==null?S.fmt2(mape_v)+'%':'—',mape_v!==null?`Training MAPE = <strong>${S.fmt2(mape_v)}%</strong>.`:'Undefined (zeros in data).')+
-    S.fullMetricCard('r2',S.fmt(r2_v,4),`Training R² = <strong>${S.fmt(r2_v,4)}</strong>. High R² in growth phase does not guarantee good forecast performance.`)+
-    S.fullMetricCard('aic',S.fmt2(aic),`AIC = <strong>${S.fmt2(aic)}</strong> (${k} parameters).`)+
+    S.fullMetricCard('mape',mape_v!==null?S.fmt2(mape_v)+'%':'—',mape_v!==null?`Training MAPE = <strong>${S.fmt2(mape_v)}%</strong>.`:'Undefined (zeros).')+
+    S.fullMetricCard('r2',S.fmt(r2_v,4),`Training R² = <strong>${S.fmt(r2_v,4)}</strong>. High R² does not guarantee good forecast performance.`)+
+    S.fullMetricCard('aic',S.fmt2(modelRes.aic),`AIC = <strong>${S.fmt2(modelRes.aic)}</strong>.`)+
     S.fullMetricCard('bic',S.fmt2(bic_v),`BIC = <strong>${S.fmt2(bic_v)}</strong>.`);
 
   // Forecast evaluation
@@ -509,23 +904,33 @@ function showResults(ctx){
     const f_mape=S.mape(testObs,testPred);
     const bias=testObs.reduce((s,o,i)=>s+(testPred[i]-o),0)/testObs.length;
     const ratio=rmse_v>0?f_rmse/rmse_v:null;
+    const modelSuggestion={
+      poisson:'Poisson assumes constant growth — if epidemic is decelerating, try Negative Binomial, ARIMA, or GAM.',
+      negbinom:'Negative Binomial assumes constant growth — consider ARIMA or GAM for the full curve.',
+      linear_log:'Log-linear assumes exponential growth — try ARIMA or a phenomenological model for the full curve.',
+      arima:'ARIMA bias may reflect trend specification. Try different d or p values.',
+      gam:'GAM bias in forecast window suggests the spline is not extrapolating well. Splines are unreliable beyond the training data range.'
+    };
     document.getElementById('forecastMetrics').innerHTML=
       S.fullMetricCard('rmse',S.fmt2(f_rmse),
         `Forecast RMSE = <strong>${S.fmt2(f_rmse)}</strong> over ${testObs.length} hold-out ${unitLabel}s.`+
-        (ratio?` ${S.fmt2(ratio)}× the training RMSE — ${ratio<1.5?'excellent':ratio<3?'moderate degradation, typical':'large degradation, check training window'}`:''  ))+
+        (ratio?` ${S.fmt2(ratio)}× the training RMSE — ${ratio<1.5?'excellent':ratio<3?'moderate degradation':'large degradation'}`:''  ))+
       S.fullMetricCard('mae',S.fmt2(f_mae),`Forecast MAE = <strong>${S.fmt2(f_mae)}</strong>.`)+
       S.fullMetricCard('mape',f_mape!==null?S.fmt2(f_mape)+'%':'—',f_mape!==null?`Forecast MAPE = <strong>${S.fmt2(f_mape)}%</strong>.`:'Undefined.')+
       `<div class="concept-box" style="margin-top:0.75rem">
         <div class="cb-definition"><strong>Mean forecast bias</strong>Positive = overprediction; negative = underprediction.</div>
-        <div class="cb-interpretation"><strong>Your result</strong>Bias = <strong>${S.fmt2(bias)}</strong>. ${Math.abs(bias)<f_rmse*0.3?'Low bias — approximately unbiased.':bias>0?'Positive bias — model overpredicts. Regression often overshoots when the growth phase ends.':'Negative bias — model underpredicts.'}</div>
-        <div class="cb-sowhat">Statistical regression models assume constant exponential growth. If the epidemic is decelerating, overprediction is expected. For forecast evaluation beyond the growth phase, use phenomenological models.</div>
+        <div class="cb-interpretation"><strong>Your result</strong>Bias = <strong>${S.fmt2(bias)}</strong>. ${Math.abs(bias)<f_rmse*0.3?'Low bias — approximately unbiased.':bias>0?'Positive bias — model overpredicts in the forecast window.':'Negative bias — model underpredicts.'}</div>
+        <div class="cb-sowhat">${modelSuggestion[currentModel]||'Try a different model or adjust the training window.'}</div>
       </div>`;
 
     Plotly.newPlot('forecastVsObsChart',[
       {x:testLabels,y:testObs,mode:'markers+lines',name:'Hold-out observed',marker:{color:'#0A5C36',size:8,symbol:'diamond'},line:{color:'#0A5C36',width:1.5,dash:'dot'}},
-      {x:testLabels,y:testPred,mode:'markers+lines',name:'Forecast',marker:{color:'#E05C2A',size:7},line:{color:'#E05C2A',width:2}}
+      {x:testLabels,y:testPred,mode:'markers+lines',name:'Forecast',marker:{color:'#E05C2A',size:7},line:{color:'#E05C2A',width:2}},
+      ...(bootResult?.forecastCI?[{x:[...testLabels,...testLabels.slice().reverse()],
+        y:[...bootResult.forecastCI.map(c=>c.hi),...bootResult.forecastCI.map(c=>c.lo).reverse()],
+        fill:'toself',fillcolor:'rgba(224,92,42,0.12)',line:{color:'transparent'},name:'95% PI'}]:[])
     ],{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:11,color:'#5a5a56'},
-      xaxis:{title:`Hold-out period (${unit})`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+      xaxis:{title:`Hold-out (${unit})`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
       yaxis:{title:'Cases',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
       legend:{orientation:'h',y:-0.3},margin:{t:10,r:20,b:70,l:60}
     },{responsive:true,displayModeBar:false});
@@ -541,42 +946,49 @@ function showResults(ctx){
 
 function fitAllModels(){
   const split=getSplit();
-  const{trainObs,testObs,horizon,start,end}=split;
+  const{allObs,trainObs,testObs,horizon,start,end}=split;
   if(trainObs.length<3){alert('Need at least 3 training points.');return;}
   document.getElementById('compareBtn').disabled=true;
-  document.getElementById('fitStatus').textContent='Comparing…';
+  document.getElementById('fitStatus').textContent='Comparing all models…';
   const t=trainObs.map((_,i)=>i);
   const hasTest=testObs.length>0&&horizon>0;
   setTimeout(()=>{
     const fitters=[
-      {name:'Poisson GLM',fn:()=>fitPoisson(t,trainObs),k:2},
-      {name:'Neg. Binomial GLM',fn:()=>fitNegBinom(t,trainObs),k:3},
-      {name:'Log-linear OLS',fn:()=>fitLogLinear(t,trainObs),k:2}
+      {name:'Poisson GLM',fn:(t,obs)=>fitPoisson(t,obs),k:2},
+      {name:'Neg. Binomial GLM',fn:(t,obs)=>fitNegBinom(t,obs),k:3},
+      {name:'Log-linear OLS',fn:(t,obs)=>fitLogLinear(t,obs),k:2},
+      {name:'ARIMA (auto)',fn:(t,obs)=>autoARIMA(t,obs),k:null},
+      {name:`GAM (df=${parseInt(document.getElementById('gam_df').value)||6})`,
+        fn:(t,obs)=>fitGAM(t,obs,parseInt(document.getElementById('gam_df').value)||6),k:null}
     ];
     const results=fitters.map(f=>{
       try{
-        const res=f.fn();
-        const testPred=testObs.length>0?Array.from({length:testObs.length},(_,i)=>Math.max(0,Math.exp(res.params[0]+res.params[1]*(t.length+i)))):[];
+        const res=f.fn(t,trainObs);
+        const testPred=testObs.length>0&&horizon>0?(
+          res.forecast?res.forecast(horizon).slice(0,testObs.length).map(v=>Math.max(0,v)):
+          Array.from({length:testObs.length},(_,i)=>Math.max(0,Math.exp(res.params[0]+res.params[1]*(t.length+i))))
+        ):[];
         return{name:f.name,
           rmse:Core.rmse(trainObs,res.pred),mae:Core.mae(trainObs,res.pred),
-          r2:Core.rSquared(trainObs,res.pred),aic:res.aic,bic:Core.bic(trainObs,res.pred,f.k),
+          r2:Core.rSquared(trainObs,res.pred),aic:res.aic,
+          bic:Core.bic(trainObs,res.pred,f.k||res.params.length),
           dt:res.doublingTime,
           frmse:testPred.length>0?Core.rmse(testObs,testPred):null,
-          fmae:testPred.length>0?Core.mae(testObs,testPred):null
-        };
-      }catch(e){return{name:f.name,rmse:null,aic:null,bic:null,r2:null,frmse:null};}
+          fmae:testPred.length>0?Core.mae(testObs,testPred):null};
+      }catch(e){return{name:f.name,rmse:null,aic:null,r2:null,frmse:null};}
     });
     const bestAIC=Math.min(...results.filter(r=>r.aic!==null).map(r=>r.aic));
     const bestFRMSE=hasTest?Math.min(...results.filter(r=>r.frmse!==null).map(r=>r.frmse)):null;
     const vmr_v=Core.vmr(trainObs);
+    const unitLabel=document.getElementById('timeUnit').value.replace('ly','');
     const rows=results.map(r=>{
-      if(!r.aic)return`<tr><td>${r.name}</td><td colspan="${hasTest?7:5}" style="color:var(--text-tertiary);text-align:center">Failed</td></tr>`;
+      if(!r.rmse)return`<tr><td>${r.name}</td><td colspan="${hasTest?7:5}" style="color:var(--text-tertiary);text-align:center">Failed</td></tr>`;
       return`<tr>
         <td>${r.name}</td>
         <td>${Core.fmt2(r.rmse)}</td><td>${Core.fmt(r.r2,4)}</td>
-        <td class="${r.aic===bestAIC?'best':r.aic>bestAIC+10?'worst':''}">${Core.fmt2(r.aic)}</td>
-        <td>${Core.fmt2(r.bic)}</td>
-        <td>${r.dt?Core.fmt2(r.dt)+' '+document.getElementById('timeUnit').value.replace('ly','')+'s':'—'}</td>
+        <td class="${r.aic===bestAIC?'best':r.aic>bestAIC+10?'worst':''}">${r.aic?Core.fmt2(r.aic):'—'}</td>
+        <td>${r.bic?Core.fmt2(r.bic):'—'}</td>
+        <td>${r.dt?Core.fmt2(r.dt)+' '+unitLabel+'s':'—'}</td>
         ${hasTest?`<td class="${r.frmse===bestFRMSE?'best':''}">${r.frmse!==null?Core.fmt2(r.frmse):'—'}</td><td>${r.fmae!==null?Core.fmt2(r.fmae):'—'}</td>`:''}
       </tr>`;
     }).join('');
@@ -594,16 +1006,18 @@ function fitAllModels(){
         ${hasTest?` · <strong>Best forecast RMSE:</strong> ${results.find(r=>r.frmse===bestFRMSE)?.name||'—'}`:''}
       </div>
       ${hasTest?`<div class="info-box" style="margin-top:6px;font-size:12px">💡 If best AIC ≠ best forecast RMSE, the lower-AIC model is overfitting the training data.</div>`:''}`;
-    document.getElementById('fitStatus').textContent='Done ✓';
+    document.getElementById('fitStatus').textContent='Comparison done ✓';
     document.getElementById('compareBtn').disabled=false;
   },10);
 }
 
+// Init
 document.getElementById('modelNote').textContent=modelNotes['poisson'];
 window.onload=()=>{
   loadDataset('influenza2009',document.querySelector('#datasetPills .pill-btn'));
   showModelDef('poisson');
   updateLabels();
+  setAutoArima(true,document.getElementById('autoArimaBtn'));
 };
 </script>
 </body>
