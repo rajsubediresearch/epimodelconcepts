@@ -10,7 +10,7 @@
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <style>
     .progress-bar-wrap{background:var(--bg-secondary);border-radius:4px;height:6px;margin:8px 0;overflow:hidden}
-    .progress-bar{height:6px;background:var(--accent);border-radius:4px;transition:width 0.2s;width:0%}
+    .progress-bar{height:6px;background:var(--accent);border-radius:4px;transition:width 0.15s;width:0%}
     .hist-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px}
     .split-badge{display:inline-block;font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
     .split-badge.train{background:var(--accent-bg);color:var(--accent-text);border:0.5px solid var(--accent)}
@@ -33,10 +33,9 @@
 <main class="page-wrap">
   <div class="page-hero">
     <h1>Phenomenological models</h1>
-    <p>Fit mathematical growth curves to epidemic data. Set a training window and forecast horizon to evaluate out-of-sample forecast performance — or use the full dataset for final estimation. Compare models, run bootstrap CIs, and interpret every metric through three-layer definitions.</p>
+    <p>Fit mathematical growth curves to epidemic data. Define a training window and forecast horizon to evaluate out-of-sample performance, or fit the full dataset for final estimation. Bootstrap CIs run automatically after fitting.</p>
   </div>
 
-  <!-- ── Input card ── -->
   <div class="card">
     <div class="section-label">Outbreak data</div>
     <div class="field-row"><label>Disease</label><input type="text" id="diseaseName" value="Ebola" oninput="updateLabels()"></div>
@@ -81,7 +80,7 @@
 
     <div class="inner-divider">Training window &amp; forecast horizon</div>
     <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.6">
-      Set how many time points to use for fitting (training). The remaining observed points after training + forecast horizon will be used for <strong>forecast evaluation</strong> if available.
+      Fit on a training window, then forecast ahead. If observed data exists in the forecast window, forecast evaluation metrics are computed automatically.
     </p>
     <div class="field-row">
       <label>Training: start</label>
@@ -100,23 +99,34 @@
     </div>
     <div id="splitInfo" class="info-box" style="margin-top:6px;font-size:13px;line-height:1.6"></div>
 
+    <div class="inner-divider">Bootstrap uncertainty</div>
+    <div class="field-row">
+      <label>Bootstrap iterations</label>
+      <input type="number" id="bootN" value="300" min="0" max="1000" step="50">
+      <span style="font-size:12px;color:var(--text-tertiary)">Set to 0 to skip</span>
+    </div>
+    <div class="info-box" style="font-size:12px;margin-top:4px">
+      Bootstrap runs automatically after fitting. 300 iterations recommended (~3–5s). Set to 0 to get point estimates only. Higher = more reliable CIs.
+    </div>
+
     <div style="margin-top:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn-primary" id="fitBtn" onclick="runFit()">Fit model</button>
       <button class="btn-primary" id="compareBtn" onclick="fitAllModels()" style="background:var(--bg-secondary);color:var(--accent);border:0.5px solid var(--accent)">Compare all models</button>
-      <button class="btn-primary" id="bootBtn" onclick="runBootstrap()" style="background:var(--bg-secondary);color:var(--accent);border:0.5px solid var(--accent);display:none">Run bootstrap CIs</button>
       <span id="fitStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
     </div>
-    <div class="progress-bar-wrap" id="progressWrap" style="display:none"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-bar-wrap" id="progressWrap" style="display:none">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div id="progressLabel" style="font-size:11px;color:var(--text-tertiary);margin-top:2px"></div>
   </div>
 
-  <!-- ── Model definition ── -->
   <div class="card" id="modelDefCard" style="display:none">
     <div class="section-label" id="modelDefLabel">Model overview</div>
     <div id="modelDefContent"></div>
   </div>
 
-  <!-- ── Results ── -->
   <div id="resultsArea" style="display:none">
+
     <div class="card">
       <div class="section-label" id="chartLabel">Fitted curve</div>
       <div id="fitChart" style="width:100%;height:380px"></div>
@@ -130,29 +140,26 @@
 
     <div class="card">
       <div class="section-label">Training fit metrics <span class="split-badge train">Training</span></div>
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">How well the model fits the <strong>training data</strong> used for estimation.</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">How well the model fits the training data used for estimation.</p>
       <div id="metricsResults"></div>
     </div>
 
-    <!-- Forecast evaluation — only shown when test data exists -->
     <div id="forecastEvalCard" style="display:none">
       <div class="forecast-eval-card">
-        <div class="section-label">Forecast evaluation metrics <span class="split-badge test">Test / hold-out</span></div>
+        <div class="section-label">Forecast evaluation <span class="split-badge test">Hold-out</span></div>
         <p style="font-size:13px;color:var(--success-text);margin-bottom:12px;line-height:1.6">
-          These metrics compare model <strong>forecasts</strong> against <strong>observed values</strong> in the hold-out period — a more honest evaluation of predictive performance than in-sample metrics.
+          Comparing model <strong>forecasts</strong> against <strong>observed hold-out values</strong> — a more honest measure of predictive performance than in-sample metrics.
         </p>
         <div id="forecastMetrics"></div>
         <div id="forecastVsObsChart" style="width:100%;height:260px;margin-top:12px"></div>
       </div>
     </div>
 
-    <!-- No test data note -->
     <div id="noTestDataNote" style="display:none">
       <div class="card">
         <div class="warn-box" style="margin:0">
-          ⚠ <strong>Forecast only — no hold-out evaluation available.</strong>
-          The forecast horizon extends beyond the observed data. No forecast performance metrics can be computed.
-          To evaluate forecast performance, ensure training end + forecast horizon ≤ total data length.
+          ⚠ <strong>Forecast only — no hold-out evaluation.</strong>
+          Forecast extends beyond observed data. To evaluate forecast performance, ensure training end + forecast horizon ≤ total data length.
         </div>
       </div>
     </div>
@@ -163,46 +170,33 @@
     </div>
 
     <div class="card" id="bootCard" style="display:none">
-      <div class="section-label">Bootstrap confidence intervals &amp; parameter distributions</div>
+      <div class="section-label">Bootstrap CIs &amp; parameter distributions</div>
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
-        Parametric bootstrap: residuals are resampled, the model is refit 300 times, and parameter distributions are shown below.
-        Narrow histogram = well-identified parameter. Wide or skewed = poorly constrained by data.
+        Parametric bootstrap: residuals resampled, model refit N times. Narrow histogram = well-identified. Wide or skewed = poorly constrained by data.
       </p>
       <div id="bootSummary"></div>
       <div class="hist-grid" id="paramHistograms"></div>
     </div>
   </div>
 
-  <!-- ── Model comparison ── -->
   <div class="card" id="comparisonCard" style="display:none">
     <div class="section-label">Model comparison — all models</div>
     <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">All models fitted on the same training window. Green = best. Orange = ΔAIC &gt; 10.</p>
     <div id="comparisonTable"></div>
   </div>
 
-  <!-- ── Concepts ── -->
   <div class="card">
     <div class="section-label">Training vs forecast evaluation</div>
     <div class="concept-box">
       <div class="cb-definition"><strong>In-sample fit vs out-of-sample forecast performance</strong>
-        In-sample metrics (RMSE, R², AIC) measure how well a model reproduces the data it was fitted to. A model with 4 parameters can always fit better than one with 2 — but this does not mean it forecasts better. Overfitting is common: a highly flexible model learns noise in the training data and extrapolates it incorrectly.
+        In-sample metrics (RMSE, R², AIC) measure how well a model reproduces the data it was fitted to. A model with more parameters always fits better in-sample — but this does not mean it forecasts better. Overfitting is common: a flexible model learns noise in training data and extrapolates it incorrectly.
       </div>
-      <div class="cb-interpretation"><strong>The train/test split approach</strong>
-        By fitting on weeks 1–24 and evaluating on weeks 25–28, you get an honest estimate of forecast performance. A model with slightly worse in-sample fit but better out-of-sample metrics is the preferred choice for forecasting. This is the basis of cross-validation and the philosophy behind proper scoring rules like WIS.
+      <div class="cb-interpretation"><strong>The train/test split</strong>
+        Fitting on weeks 1–24 and evaluating on weeks 25–28 gives an honest estimate of forecast performance. A model with slightly worse in-sample fit but better out-of-sample RMSE is the preferred choice for forecasting. This is the basis of cross-validation and proper scoring rules like WIS.
       </div>
-      <div class="cb-sowhat">If your model has excellent R² in training but high forecast RMSE, it is overfitting — likely too many parameters relative to data length. Try a simpler model (logistic or Gompertz instead of Richards) or collect more data before the peak.</div>
-    </div>
-    <div class="concept-box" style="margin-top:0.75rem">
-      <div class="cb-definition"><strong>When forecast evaluation is not possible</strong>
-        If your training window covers all observed data, you are fitting the full dataset. This is appropriate for final size estimation and parameter reporting — but you cannot evaluate forecast performance without held-out data. In this case, use AIC/BIC for model selection and bootstrap CIs for uncertainty.
-      </div>
-      <div class="cb-interpretation"><strong>Practical guidance</strong>
-        For real-time forecasting during an ongoing outbreak: fit on all data available up to now, forecast forward. For retrospective evaluation: hold out the last k periods, fit on the rest, compare forecast vs observed, then refit on the full series for final estimates.
-      </div>
-      <div class="cb-sowhat">Always report whether your metrics are in-sample or out-of-sample. In-sample R² without a held-out test set is not a valid measure of forecast accuracy.</div>
+      <div class="cb-sowhat">If your model has excellent training R² but high forecast RMSE, it is overfitting — too many parameters relative to data length. Try a simpler model (logistic instead of Richards) or collect more data before the peak.</div>
     </div>
   </div>
-
 </main>
 <footer class="site-footer">EpiModelConcepts · <a href="https://github.com/rajsubediresearch/epimodelconcepts" target="_blank">GitHub</a></footer>
 
@@ -211,42 +205,33 @@
 <script src="js/models.js"></script>
 <script>
 let currentModel='logistic', currentLoss='sse';
-let lastFitResult=null, lastObs=null, lastT=null, lastModel=null, lastAllObs=null;
+let lastCtx=null;
 
 const lossNotes={
-  sse:'Least squares: minimizes Σ(obs−pred)². Assumes normal errors. Fast and robust. Good for teaching and symmetric data.',
-  poisson:'Poisson log-likelihood: treats counts as Poisson-distributed (mean=variance). More appropriate than SSE for count data when VMR ≈ 1.',
-  nb:'Negative Binomial log-likelihood: allows variance > mean (overdispersion). Best for real outbreak data with VMR > 1.5.'
+  sse:'Least squares: minimizes Σ(obs−pred)². Assumes normal errors. Fast and robust.',
+  poisson:'Poisson log-likelihood: treats counts as Poisson-distributed (mean=variance). Appropriate when VMR ≈ 1.',
+  nb:'Negative Binomial log-likelihood: allows variance > mean. Best for overdispersed count data (VMR > 1.5).'
 };
 
-/* ── Build model pills ── */
+/* ── Model pills ── */
 const mpEl=document.getElementById('modelPills');
 Models.phenomenological.forEach(m=>{
   const btn=document.createElement('button');
   btn.className='pill-btn'+(m.id===currentModel?' active':'');
   btn.textContent=m.name;
-  btn.onclick=()=>{
-    document.querySelectorAll('#modelPills .pill-btn').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active'); currentModel=m.id; showModelDef(m.id);
-  };
+  btn.onclick=()=>{document.querySelectorAll('#modelPills .pill-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');currentModel=m.id;showModelDef(m.id);};
   mpEl.appendChild(btn);
 });
 
-function setLoss(l,btn){
-  currentLoss=l;
-  document.querySelectorAll('#lossPills .pill-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('lossNote').textContent=lossNotes[l];
-}
+function setLoss(l,btn){currentLoss=l;document.querySelectorAll('#lossPills .pill-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('lossNote').textContent=lossNotes[l];}
 
 function updateLabels(){
   const u=document.getElementById('timeUnit').value;
-  const labels={weekly:'weekly periods ahead',daily:'daily periods ahead',monthly:'monthly periods ahead',yearly:'yearly periods ahead'};
-  document.getElementById('forecastHLabel').textContent=labels[u]||'periods ahead';
-  const unitSingle={weekly:'week',daily:'day',monthly:'month',yearly:'year'};
-  const s=unitSingle[u]||'period';
-  document.getElementById('fitStartUnit').textContent=s;
-  document.getElementById('fitEndUnit').textContent=s;
+  const map={weekly:'weekly periods ahead',daily:'daily periods ahead',monthly:'monthly periods ahead',yearly:'yearly periods ahead'};
+  const s={weekly:'week',daily:'day',monthly:'month',yearly:'year'};
+  document.getElementById('forecastHLabel').textContent=map[u]||'periods ahead';
+  document.getElementById('fitStartUnit').textContent=s[u]||'period';
+  document.getElementById('fitEndUnit').textContent=s[u]||'period';
   updateSplitInfo();
 }
 
@@ -257,38 +242,32 @@ function getSplit(){
   const end=Math.min(n,parseInt(document.getElementById('fitEnd').value)||n);
   const horizon=Math.max(0,parseInt(document.getElementById('forecastH').value)||0);
   const trainObs=allObs.slice(start-1,end);
-  // test window: periods immediately after training, up to horizon length
-  const testStart=end; // 0-indexed
-  const testEnd=Math.min(n, end+horizon);
+  const testStart=end;
+  const testEnd=Math.min(n,end+horizon);
   const testObs=allObs.slice(testStart,testEnd);
-  const hasTest=testObs.length>0 && horizon>0;
-  const futureHorizon=horizon-testObs.length; // steps beyond data
-  return {allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon,testStart,testEnd};
+  const hasTest=testObs.length>0&&horizon>0;
+  const futureHorizon=Math.max(0,horizon-testObs.length);
+  return{allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon,testStart,testEnd};
 }
 
 function updateSplitInfo(){
-  const {allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon}=getSplit();
-  const unit=document.getElementById('timeUnit').value.replace('ly','');
+  const{allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon}=getSplit();
+  const u=document.getElementById('timeUnit').value.replace('ly','');
   if(n<2){document.getElementById('splitInfo').textContent='Enter data to see split info.';return;}
-  let msg=`<strong>Training:</strong> ${trainObs.length} ${unit}s (periods ${start}–${end}) &nbsp;·&nbsp; `;
+  let msg=`<strong>Training:</strong> ${trainObs.length} ${u}s (periods ${start}–${end}) &nbsp;·&nbsp; `;
   if(horizon>0){
-    if(hasTest){
-      msg+=`<strong>Forecast:</strong> ${horizon} ${unit}s ahead &nbsp;·&nbsp; `;
-      msg+=`<strong>Observed in forecast window:</strong> ${testObs.length} ${unit}s ✓ — forecast metrics will be computed`;
-      if(futureHorizon>0) msg+=` &nbsp;·&nbsp; ${futureHorizon} ${unit}s beyond observed data`;
-    } else {
-      msg+=`<strong>Forecast:</strong> ${horizon} ${unit}s ahead &nbsp;·&nbsp; `;
-      msg+='<strong>No held-out data</strong> — forecast only, no evaluation metrics';
-    }
+    msg+=`<strong>Forecast:</strong> ${horizon} ${u}s ahead &nbsp;·&nbsp; `;
+    msg+=hasTest
+      ?`<strong>Hold-out observed:</strong> ${testObs.length} ${u}s ✓ — forecast metrics will be computed${futureHorizon>0?` · ${futureHorizon} ${u}s beyond data`:''}`
+      :'<strong>No hold-out data</strong> — forecast only, no evaluation metrics';
   } else {
-    msg+=`<strong>No forecast</strong> — fitting full training window only`;
+    msg+=`No forecast — full training window only`;
   }
   document.getElementById('splitInfo').innerHTML=msg;
 }
 
 function loadDataset(key,btn){
-  document.querySelectorAll('#datasetPills .pill-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('#datasetPills .pill-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
   if(key==='custom'){document.getElementById('dataInput').value='';document.getElementById('dataInput').focus();return;}
   const ds=Models.defaultDatasets[key];if(!ds)return;
   document.getElementById('dataInput').value=ds.data.join(', ');
@@ -296,7 +275,6 @@ function loadDataset(key,btn){
   document.getElementById('placeName').value=ds.place;
   document.getElementById('timeUnit').value=ds.unit;
   document.getElementById('dataType').value=ds.type||'cumulative';
-  // set sensible defaults: fit first 80%, forecast remaining 20%
   const n=ds.data.length;
   const trainEnd=Math.max(4,Math.floor(n*0.8));
   document.getElementById('fitStart').value=1;
@@ -325,22 +303,24 @@ function showModelDef(id){
 }
 
 function getLossFn(model,t,obs){
-  if(currentLoss==='poisson') return Models.poissonLoss(model.fn,t,obs);
-  if(currentLoss==='nb') return Models.nbLoss(model.fn,t,obs,2);
+  if(currentLoss==='poisson')return Models.poissonLoss(model.fn,t,obs);
+  if(currentLoss==='nb')return Models.nbLoss(model.fn,t,obs,2);
   return Models.sseLoss(model.fn,t,obs);
 }
 function getLossFnBuilder(){
-  if(currentLoss==='poisson') return (fn,t,obs)=>Models.poissonLoss(fn,t,obs);
-  if(currentLoss==='nb') return (fn,t,obs,th)=>Models.nbLoss(fn,t,obs,th||2);
-  return (fn,t,obs)=>Models.sseLoss(fn,t,obs);
+  if(currentLoss==='poisson')return(fn,t,obs)=>Models.poissonLoss(fn,t,obs);
+  if(currentLoss==='nb')return(fn,t,obs,th)=>Models.nbLoss(fn,t,obs,th||2);
+  return(fn,t,obs)=>Models.sseLoss(fn,t,obs);
 }
 
 function runFit(){
-  const {allObs,trainObs,testObs,hasTest,futureHorizon,start,end,horizon,testStart,testEnd}=getSplit();
+  const split=getSplit();
+  const{trainObs,testObs,hasTest,horizon,start,end,testStart,testEnd,allObs}=split;
   if(trainObs.length<4){document.getElementById('fitStatus').textContent='Need at least 4 training points.';return;}
   const model=Models.phenomenological.find(m=>m.id===currentModel);if(!model)return;
-  document.getElementById('fitStatus').textContent='Fitting…';
   document.getElementById('fitBtn').disabled=true;
+  document.getElementById('compareBtn').disabled=true;
+  document.getElementById('fitStatus').textContent='Fitting…';
 
   setTimeout(()=>{
     try{
@@ -348,40 +328,109 @@ function runFit(){
       const lf=getLossFn(model,t,trainObs);
       const res=Optimizer.fitModel(lf,model.init(trainObs),{maxIter:8000,tol:1e-12});
       const trainPred=t.map(ti=>Math.max(0,model.fn(ti,res.params)));
-
-      // Forecast: generate predictions for test window + any future
-      const totalForecastSteps=horizon;
-      const forecastT=Array.from({length:totalForecastSteps},(_,i)=>t.length+i);
+      const forecastT=Array.from({length:horizon},(_,i)=>t.length+i);
       const forecastPred=forecastT.map(ti=>Math.max(0,model.fn(ti,res.params)));
-
-      // Test predictions (subset of forecast that overlaps observed data)
       const testPred=forecastPred.slice(0,testObs.length);
 
-      lastFitResult={params:res.params,predicted:trainPred};
-      lastObs=trainObs; lastT=t; lastModel=model; lastAllObs=allObs;
+      const ctx={model,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,
+        horizon,forecastT,forecastPred,params:res.params,start,end,testStart,testEnd,
+        futureHorizon:split.futureHorizon};
+      lastCtx=ctx;
 
-      document.getElementById('fitStatus').textContent='Fitted ✓';
-      document.getElementById('fitBtn').disabled=false;
-      document.getElementById('bootBtn').style.display='inline-block';
-
-      showResults({
-        model,allObs,trainObs,t,trainPred,
-        testObs,testPred,hasTest,futureHorizon,
-        forecastT,forecastPred,
-        params:res.params,
-        start,end,horizon,testStart,testEnd
-      });
-      showModelDef(currentModel);
+      const nBoot=parseInt(document.getElementById('bootN').value)||0;
+      if(nBoot>0){
+        document.getElementById('fitStatus').textContent='Fitted ✓ — running bootstrap…';
+        document.getElementById('progressWrap').style.display='block';
+        runBootstrapAuto(model,trainObs,t,res.params,nBoot,ctx,()=>{
+          document.getElementById('fitBtn').disabled=false;
+          document.getElementById('compareBtn').disabled=false;
+          document.getElementById('progressWrap').style.display='none';
+          document.getElementById('progressLabel').textContent='';
+        });
+      } else {
+        document.getElementById('fitStatus').textContent='Fitted ✓';
+        document.getElementById('fitBtn').disabled=false;
+        document.getElementById('compareBtn').disabled=false;
+        showResults(ctx);
+        showModelDef(currentModel);
+      }
     }catch(e){
       document.getElementById('fitStatus').textContent='Fit failed — try a different model or adjust training window.';
       document.getElementById('fitBtn').disabled=false;
+      document.getElementById('compareBtn').disabled=false;
       console.error(e);
     }
   },10);
 }
 
-function showResults(ctx, bootResult=null){
-  const {model,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,futureHorizon,forecastT,forecastPred,params,start,end,horizon,testStart,testEnd}=ctx;
+function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
+  setTimeout(()=>{
+    const bootResult=Optimizer.bootstrap(
+      model.fn,getLossFnBuilder(),t,obs,params,nBoot,currentLoss,2,
+      (p)=>{
+        document.getElementById('progressBar').style.width=(p*100)+'%';
+        document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot} iterations…`;
+      }
+    );
+    document.getElementById('progressBar').style.width='100%';
+    if(bootResult){
+      document.getElementById('fitStatus').textContent=`Fitted ✓ with ${bootResult.nBoot}-iteration bootstrap CIs`;
+      // attach forecast CIs from bootstrap
+      if(ctx.horizon>0&&bootResult.bootParams){
+        bootResult.forecastCI=Array.from({length:ctx.testObs.length},(_,i)=>{
+          const ti=t.length+i;
+          const vals=bootResult.bootParams.map(bp=>model.fn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
+          return{lo:Math.max(0,vals[Math.floor(0.025*vals.length)]||0),hi:vals[Math.floor(0.975*vals.length)]||0};
+        });
+        // full forecast PI (training + forecast horizon)
+        bootResult.fullForecastCI=ctx.forecastT.map(ti=>{
+          const vals=bootResult.bootParams.map(bp=>model.fn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
+          return{lo:Math.max(0,vals[Math.floor(0.025*vals.length)]||0),hi:vals[Math.floor(0.975*vals.length)]||0};
+        });
+      }
+      showResults(ctx,bootResult);
+      showBootstrapPanel(model,params,bootResult);
+    } else {
+      document.getElementById('fitStatus').textContent='Fitted ✓ — bootstrap failed (model may be unidentifiable with this data)';
+      showResults(ctx);
+    }
+    showModelDef(model.id);
+    onDone();
+  },20);
+}
+
+function showBootstrapPanel(model,params,bootResult){
+  document.getElementById('bootCard').style.display='block';
+  document.getElementById('bootSummary').innerHTML=`
+    <table class="param-table" style="margin-bottom:12px">
+      <thead><tr><th>Parameter</th><th>Estimate</th><th>95% CI lower</th><th>95% CI upper</th><th>CI width</th></tr></thead>
+      <tbody>${model.params.map((p,i)=>`<tr>
+        <td class="p-name">${model.paramNames[i]}</td>
+        <td>${Core.fmt(params[i],4)}</td>
+        <td>${Core.fmt(bootResult.paramCI[i].lo,4)}</td>
+        <td>${Core.fmt(bootResult.paramCI[i].hi,4)}</td>
+        <td>${Core.fmt(bootResult.paramCI[i].hi-bootResult.paramCI[i].lo,4)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  const histEl=document.getElementById('paramHistograms');histEl.innerHTML='';
+  model.params.forEach((p,i)=>{
+    const div=document.createElement('div');
+    div.style.cssText='background:var(--bg-secondary);border-radius:8px;padding:8px';
+    div.innerHTML=`<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">${model.paramNames[i]}</div><div id="hist_${i}" style="height:160px"></div>`;
+    histEl.appendChild(div);
+    const samples=bootResult.paramCI[i].samples,est=params[i];
+    Plotly.newPlot(`hist_${i}`,[
+      {x:samples,type:'histogram',nbinsx:30,marker:{color:'rgba(24,95,165,0.5)',line:{color:'rgba(24,95,165,0.8)',width:0.5}}},
+      {x:[est,est],y:[0,samples.length*0.15],type:'scatter',mode:'lines',line:{color:'#E05C2A',width:2,dash:'dash'},showlegend:false}
+    ],{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:10,color:'#5a5a56'},
+      xaxis:{gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
+      yaxis:{title:'Count',gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
+      showlegend:false,margin:{t:5,r:5,b:30,l:40}},{responsive:true,displayModeBar:false});
+  });
+}
+
+function showResults(ctx,bootResult=null){
+  const{model,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,horizon,forecastT,forecastPred,params,start,end,testStart,testEnd}=ctx;
   const S=Core;
   const disease=document.getElementById('diseaseName').value||'Disease';
   const place=document.getElementById('placeName').value||'Location';
@@ -392,15 +441,14 @@ function showResults(ctx, bootResult=null){
   document.getElementById('resultsArea').style.display='block';
   document.getElementById('chartLabel').textContent=`${model.name} — ${disease}, ${place} (${objLabel})`;
 
-  // Build chart
   const allLabels=S.timeLabels(allObs.length,unit);
   const trainLabels=allLabels.slice(start-1,end);
-  const testLabels=allLabels.slice(testStart,testEnd);
-  const forecastLabels=S.timeLabels(t.length+horizon,unit).slice(t.length);
+  const testLabels=allLabels.slice(testStart,Math.min(allObs.length,testStart+testObs.length));
+  const foreLabels=S.timeLabels(t.length+horizon,unit).slice(t.length);
 
   const traces=[];
 
-  // Bootstrap CI band on training
+  // bootstrap CI band on training
   if(bootResult&&bootResult.predCI){
     traces.push({
       x:[...trainLabels,...trainLabels.slice().reverse()],
@@ -410,46 +458,32 @@ function showResults(ctx, bootResult=null){
     });
   }
 
-  // All observed data (greyed out background)
-  traces.push({
-    x:allLabels,y:allObs,mode:'markers',name:'All observed',
-    marker:{color:'rgba(90,90,86,0.25)',size:6},type:'scatter'
-  });
+  // bootstrap forecast PI band
+  if(bootResult&&bootResult.fullForecastCI&&horizon>0){
+    traces.push({
+      x:[...foreLabels,...foreLabels.slice().reverse()],
+      y:[...bootResult.fullForecastCI.map(c=>c.hi),...bootResult.fullForecastCI.map(c=>c.lo).reverse()],
+      fill:'toself',fillcolor:'rgba(224,92,42,0.1)',line:{color:'transparent'},
+      name:'Forecast 95% PI',type:'scatter'
+    });
+  }
 
-  // Training observed (highlighted)
-  traces.push({
-    x:trainLabels,y:trainObs,mode:'markers',name:'Training observed',
-    marker:{color:'var(--accent)',size:7},type:'scatter'
-  });
-
-  // Training fit
-  traces.push({
-    x:trainLabels,y:trainPred,mode:'lines',name:`${model.name} fit`,
-    line:{color:'#E05C2A',width:2.5},type:'scatter'
-  });
-
-  // Forecast (dashed)
+  // all observed (grey background)
+  traces.push({x:allLabels,y:allObs,mode:'markers',name:'All observed',marker:{color:'rgba(90,90,86,0.2)',size:5},type:'scatter'});
+  // training observed
+  traces.push({x:trainLabels,y:trainObs,mode:'markers',name:'Training',marker:{color:'var(--accent)',size:7},type:'scatter'});
+  // training fit
+  traces.push({x:trainLabels,y:trainPred,mode:'lines',name:`${model.name} fit`,line:{color:'#E05C2A',width:2.5},type:'scatter'});
+  // forecast (dashed)
   if(horizon>0){
-    traces.push({
-      x:forecastLabels,y:forecastPred,mode:'lines',name:'Forecast',
-      line:{color:'#E05C2A',width:2,dash:'dash'},type:'scatter'
-    });
+    traces.push({x:foreLabels,y:forecastPred,mode:'lines',name:'Forecast',line:{color:'#E05C2A',width:2,dash:'dash'},type:'scatter'});
   }
-
-  // Test observed (green dots — actual values in forecast window)
+  // hold-out observed (green diamonds)
   if(hasTest&&testObs.length>0){
-    traces.push({
-      x:testLabels,y:testObs,mode:'markers',name:'Hold-out observed',
-      marker:{color:'#0A5C36',size:9,symbol:'diamond'},type:'scatter'
-    });
+    traces.push({x:testLabels,y:testObs,mode:'markers',name:'Hold-out observed',marker:{color:'#0A5C36',size:9,symbol:'diamond'},type:'scatter'});
   }
 
-  // Vertical divider line at training/forecast boundary
-  const shapes=horizon>0?[{
-    type:'line',x0:trainLabels[trainLabels.length-1],x1:trainLabels[trainLabels.length-1],
-    y0:0,y1:1,yref:'paper',
-    line:{color:'rgba(0,0,0,0.25)',dash:'dot',width:1.5}
-  }]:[];
+  const shapes=horizon>0?[{type:'line',x0:trainLabels[trainLabels.length-1],x1:trainLabels[trainLabels.length-1],y0:0,y1:1,yref:'paper',line:{color:'rgba(0,0,0,0.2)',dash:'dot',width:1.5}}]:[];
 
   Plotly.newPlot('fitChart',traces,{
     paper_bgcolor:'transparent',plot_bgcolor:'transparent',
@@ -471,15 +505,11 @@ function showResults(ctx, bootResult=null){
     return`<tr><td class="p-name">${model.paramNames[i]}</td><td>${S.fmt(params[i],4)}${ci}</td><td class="p-desc">${model.paramDescriptions[i]}</td></tr>`;
   }).join('');
   if(model.doublingTime&&model.doublingTime(params)){
-    const dt=model.doublingTime(params);
-    paramRows+=`<tr><td class="p-name">Doubling time</td><td>${S.fmt(dt,2)} ${unitLabel}s</td><td class="p-desc">ln(2)/r — time for cases to double during exponential growth</td></tr>`;
+    paramRows+=`<tr><td class="p-name">Doubling time</td><td>${S.fmt(model.doublingTime(params),2)} ${unitLabel}s</td><td class="p-desc">ln(2)/r — time for cases to double in exponential phase</td></tr>`;
   }
   document.getElementById('paramResults').innerHTML=`
-    <table class="param-table">
-      <thead><tr><th>Parameter</th><th>Estimate${bootResult?' (95% CI)':''}</th><th>Description</th></tr></thead>
-      <tbody>${paramRows}</tbody>
-    </table>
-    ${bootResult?`<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">95% CI from parametric bootstrap (${bootResult.nBoot} resamples)</p>`:'<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">Run bootstrap CIs for uncertainty estimates.</p>'}`;
+    <table class="param-table"><thead><tr><th>Parameter</th><th>Estimate${bootResult?' (95% CI)':''}</th><th>Description</th></tr></thead><tbody>${paramRows}</tbody></table>
+    <p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">${bootResult?`95% CI from ${bootResult.nBoot}-iteration parametric bootstrap.`:'No bootstrap — set iterations > 0 to get CIs.'}</p>`;
 
   // Training metrics
   const k=model.params.length;
@@ -487,50 +517,46 @@ function showResults(ctx, bootResult=null){
   const mape_v=S.mape(trainObs,trainPred),r2_v=S.rSquared(trainObs,trainPred);
   const aic_v=S.aic(trainObs,trainPred,k),bic_v=S.bic(trainObs,trainPred,k);
   document.getElementById('metricsResults').innerHTML=
-    S.fullMetricCard('rmse',S.fmt2(rmse_v),`Training RMSE = <strong>${S.fmt2(rmse_v)}</strong> ${unitLabel}ly cases for ${disease} in ${place}. Average deviation of fit from training observations.`)+
+    S.fullMetricCard('rmse',S.fmt2(rmse_v),`Training RMSE = <strong>${S.fmt2(rmse_v)}</strong> cases per ${unitLabel} (${disease}, ${place}).`)+
     S.fullMetricCard('mae',S.fmt2(mae_v),`Training MAE = <strong>${S.fmt2(mae_v)}</strong> — typical absolute error in training period.`)+
-    S.fullMetricCard('mape',mape_v!==null?S.fmt2(mape_v)+'%':'—',mape_v!==null?`Training MAPE = <strong>${S.fmt2(mape_v)}%</strong>.`:'Undefined (zeros in training data).')+
-    S.fullMetricCard('r2',S.fmt(r2_v,4),`Training R² = <strong>${S.fmt(r2_v,4)}</strong> — ${S.fmt2(r2_v*100)}% of training variance explained. Note: high R² does not guarantee good forecast performance.`)+
-    S.fullMetricCard('aic',S.fmt2(aic_v),`AIC = <strong>${S.fmt2(aic_v)}</strong> (${k} parameters). Use for model selection on same training data.`)+
-    S.fullMetricCard('bic',S.fmt2(bic_v),`BIC = <strong>${S.fmt2(bic_v)}</strong>. Stronger complexity penalty than AIC.`);
+    S.fullMetricCard('mape',mape_v!==null?S.fmt2(mape_v)+'%':'—',mape_v!==null?`Training MAPE = <strong>${S.fmt2(mape_v)}%</strong>.`:'Undefined (zeros in data).')+
+    S.fullMetricCard('r2',S.fmt(r2_v,4),`Training R² = <strong>${S.fmt(r2_v,4)}</strong>. High R² does not guarantee good forecast performance.`)+
+    S.fullMetricCard('aic',S.fmt2(aic_v),`AIC = <strong>${S.fmt2(aic_v)}</strong> (${k} parameters). Use for model selection on same training window.`)+
+    S.fullMetricCard('bic',S.fmt2(bic_v),`BIC = <strong>${S.fmt2(bic_v)}</strong>.`);
 
   // Forecast evaluation
   if(hasTest&&testObs.length>0&&testPred.length>0){
     document.getElementById('forecastEvalCard').style.display='block';
     document.getElementById('noTestDataNote').style.display='none';
-
     const f_mae=S.mae(testObs,testPred),f_rmse=S.rmse(testObs,testPred);
-    const f_mape=S.mape(testObs,testPred),f_r2=S.rSquared(testObs,testPred);
+    const f_mape=S.mape(testObs,testPred);
     const bias=testObs.reduce((s,o,i)=>s+(testPred[i]-o),0)/testObs.length;
-
-    const rmse_ratio=rmse_v>0?f_rmse/rmse_v:null;
-
+    const ratio=rmse_v>0?f_rmse/rmse_v:null;
     document.getElementById('forecastMetrics').innerHTML=
       S.fullMetricCard('rmse',S.fmt2(f_rmse),
-        `Forecast RMSE = <strong>${S.fmt2(f_rmse)}</strong> over ${testObs.length} hold-out ${unitLabel}s. `+
-        (rmse_ratio?`Forecast RMSE is ${S.fmt2(rmse_ratio)}× the training RMSE (${S.fmt2(rmse_v)}). `+
-        (rmse_ratio<1.5?'Excellent — forecast performance matches in-sample fit.':rmse_ratio<3?'Moderate degradation — typical for epidemic forecasting.':'Large degradation — model may be overfitting or the epidemic changed direction.'):''))+
-      S.fullMetricCard('mae',S.fmt2(f_mae),
-        `Forecast MAE = <strong>${S.fmt2(f_mae)}</strong>. Average absolute forecast error is ${S.fmt2(f_mae)} cases per ${unitLabel} in the hold-out window.`)+
-      S.fullMetricCard('mape',f_mape!==null?S.fmt2(f_mape)+'%':'—',
-        f_mape!==null?`Forecast MAPE = <strong>${S.fmt2(f_mape)}%</strong>. Forecasts are off by ${S.fmt2(f_mape)}% of observed values on average in the hold-out period.`:'Undefined (zeros in hold-out data).')+
+        `Forecast RMSE = <strong>${S.fmt2(f_rmse)}</strong> over ${testObs.length} hold-out ${unitLabel}s.`+
+        (ratio?` Forecast RMSE is <strong>${S.fmt2(ratio)}×</strong> the training RMSE — ${ratio<1.5?'excellent, forecasts match in-sample fit':ratio<3?'moderate degradation, typical for epidemic forecasting':'large degradation, possible overfitting'}.`:''  ))+
+      S.fullMetricCard('mae',S.fmt2(f_mae),`Forecast MAE = <strong>${S.fmt2(f_mae)}</strong>. Average absolute forecast error over hold-out window.`)+
+      S.fullMetricCard('mape',f_mape!==null?S.fmt2(f_mape)+'%':'—',f_mape!==null?`Forecast MAPE = <strong>${S.fmt2(f_mape)}%</strong>.`:'Undefined (zeros in hold-out data).')+
       `<div class="concept-box" style="margin-top:0.75rem">
         <div class="cb-definition"><strong>Mean forecast bias</strong>Systematic over- or under-prediction. Bias = mean(forecast − observed). Positive = overprediction; negative = underprediction.</div>
-        <div class="cb-interpretation"><strong>Your result</strong>Bias = <strong>${S.fmt2(bias)}</strong> cases per ${unitLabel}. ${Math.abs(bias)<f_rmse*0.3?'Low bias relative to RMSE — forecasts are approximately unbiased.':bias>0?'Positive bias — model tends to overpredict in the forecast window. Common when epidemic is declining faster than the model anticipates.':'Negative bias — model tends to underpredict. Common near epidemic peaks when growth is decelerating.'}</div>
-        <div class="cb-sowhat">Systematic bias suggests the model's assumed growth form does not match the actual epidemic trajectory in the forecast window. Try a model with more flexible shape (Richards instead of logistic) or shorten the training window to avoid fitting the plateau.</div>
+        <div class="cb-interpretation"><strong>Your result</strong>Bias = <strong>${S.fmt2(bias)}</strong> ${unitLabel}ly cases. ${Math.abs(bias)<f_rmse*0.3?'Low bias — forecasts are approximately unbiased.':bias>0?'Positive bias — model overpredicts in the forecast window. Common when epidemic declines faster than the fitted curve.':'Negative bias — model underpredicts. Common near epidemic peaks when growth is decelerating.'}</div>
+        <div class="cb-sowhat">Systematic bias suggests the model growth form does not match the actual epidemic trajectory in the forecast window. Try a model with more flexible shape (Richards instead of logistic) or shorten the training window.</div>
       </div>`;
 
     // Forecast vs observed mini chart
-    Plotly.newPlot('forecastVsObsChart',[
-      {x:testLabels,y:testObs,mode:'markers+lines',name:'Observed (hold-out)',
-        marker:{color:'#0A5C36',size:8,symbol:'diamond'},line:{color:'#0A5C36',width:1.5,dash:'dot'}},
-      {x:testLabels,y:testPred,mode:'markers+lines',name:'Forecast',
-        marker:{color:'#E05C2A',size:7},line:{color:'#E05C2A',width:2}}
-    ]+( bootResult&&bootResult.forecastCI?[{
-      x:[...testLabels,...testLabels.slice().reverse()],
-      y:[...bootResult.forecastCI.map(c=>c.hi),...bootResult.forecastCI.map(c=>c.lo).reverse()],
-      fill:'toself',fillcolor:'rgba(224,92,42,0.12)',line:{color:'transparent'},name:'95% PI'
-    }]:[]),{
+    const fciTraces=[
+      {x:testLabels,y:testObs,mode:'markers+lines',name:'Hold-out observed',marker:{color:'#0A5C36',size:8,symbol:'diamond'},line:{color:'#0A5C36',width:1.5,dash:'dot'}},
+      {x:testLabels,y:testPred,mode:'markers+lines',name:'Forecast',marker:{color:'#E05C2A',size:7},line:{color:'#E05C2A',width:2}}
+    ];
+    if(bootResult&&bootResult.forecastCI&&bootResult.forecastCI.length>0){
+      fciTraces.push({
+        x:[...testLabels,...testLabels.slice().reverse()],
+        y:[...bootResult.forecastCI.map(c=>c.hi),...bootResult.forecastCI.map(c=>c.lo).reverse()],
+        fill:'toself',fillcolor:'rgba(224,92,42,0.12)',line:{color:'transparent'},name:'95% PI'
+      });
+    }
+    Plotly.newPlot('forecastVsObsChart',fciTraces,{
       paper_bgcolor:'transparent',plot_bgcolor:'transparent',
       font:{family:'DM Sans',size:11,color:'#5a5a56'},
       xaxis:{title:`Hold-out period (${unit})`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
@@ -550,91 +576,18 @@ function showResults(ctx, bootResult=null){
   // Dispersion
   const vmr_v=S.vmr(trainObs),disp=S.dispersionLabel(vmr_v);
   document.getElementById('dispersionResults').innerHTML=
-    S.fullMetricCard('vmr',S.fmt2(vmr_v),`VMR = <strong>${S.fmt2(vmr_v)}</strong> for training data. ${disp.interpretation}`)+
-    `<div class="${vmr_v>1.5?'warn-box':'info-box'}" style="margin-top:0.75rem">
-      <strong>Verdict:</strong> ${disp.label} — ${disp.model}.
-      ${vmr_v>1.5&&currentLoss==='sse'?' Consider switching to <strong>Negative Binomial log-likelihood</strong>.':''}
-    </div>`;
-}
-
-function runBootstrap(){
-  if(!lastFitResult||!lastObs||!lastT||!lastModel){alert('Fit a model first.');return;}
-  document.getElementById('bootBtn').disabled=true;
-  document.getElementById('fitStatus').textContent='Bootstrap running…';
-  document.getElementById('progressWrap').style.display='block';
-  document.getElementById('progressBar').style.width='0%';
-  setTimeout(()=>{
-    const bootResult=Optimizer.bootstrap(
-      lastModel.fn, getLossFnBuilder(), lastT, lastObs, lastFitResult.params, 300, currentLoss, 2,
-      (p)=>{document.getElementById('progressBar').style.width=(p*100)+'%';}
-    );
-    document.getElementById('progressBar').style.width='100%';
-    document.getElementById('bootBtn').disabled=false;
-    document.getElementById('progressWrap').style.display='none';
-    if(!bootResult){document.getElementById('fitStatus').textContent='Bootstrap failed.';return;}
-    document.getElementById('fitStatus').textContent=`Bootstrap done ✓ (${bootResult.nBoot} resamples)`;
-
-    // Add forecast CIs to bootResult
-    const {testObs,testStart,testEnd,horizon,end}=getSplit();
-    if(horizon>0&&bootResult.bootParams){
-      const forecastT=Array.from({length:horizon},(_,i)=>lastT.length+i);
-      bootResult.forecastCI=forecastT.slice(0,testObs.length).map(ti=>{
-        const vals=bootResult.bootParams.map(bp=>lastModel.fn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
-        return{lo:Math.max(0,vals[Math.floor(0.025*vals.length)]||0),hi:vals[Math.floor(0.975*vals.length)]||0};
-      });
-    }
-
-    const ctx={
-      model:lastModel, allObs:lastAllObs||lastObs,
-      trainObs:lastObs, t:lastT, trainPred:lastFitResult.predicted,
-      ...getSplit(), params:lastFitResult.params,
-      testPred:Array.from({length:getSplit().testObs.length},(_,i)=>Math.max(0,lastModel.fn(lastT.length+i,lastFitResult.params)))
-    };
-    // recompute testPred
-    const split=getSplit();
-    ctx.testPred=split.forecastPred?split.forecastPred.slice(0,split.testObs.length):
-      Array.from({length:split.testObs.length},(_,i)=>Math.max(0,lastModel.fn(lastT.length+i,lastFitResult.params)));
-    ctx.forecastT=Array.from({length:split.horizon},(_,i)=>lastT.length+i);
-    ctx.forecastPred=ctx.forecastT.map(ti=>Math.max(0,lastModel.fn(ti,lastFitResult.params)));
-
-    showResults(ctx, bootResult);
-    document.getElementById('bootCard').style.display='block';
-    document.getElementById('bootSummary').innerHTML=`
-      <table class="param-table" style="margin-bottom:12px">
-        <thead><tr><th>Parameter</th><th>Estimate</th><th>95% CI lower</th><th>95% CI upper</th><th>Width</th></tr></thead>
-        <tbody>${lastModel.params.map((p,i)=>`<tr>
-          <td class="p-name">${lastModel.paramNames[i]}</td>
-          <td>${Core.fmt(lastFitResult.params[i],4)}</td>
-          <td>${Core.fmt(bootResult.paramCI[i].lo,4)}</td>
-          <td>${Core.fmt(bootResult.paramCI[i].hi,4)}</td>
-          <td>${Core.fmt(bootResult.paramCI[i].hi-bootResult.paramCI[i].lo,4)}</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
-    const histEl=document.getElementById('paramHistograms');histEl.innerHTML='';
-    lastModel.params.forEach((p,i)=>{
-      const div=document.createElement('div');
-      div.style.cssText='background:var(--bg-secondary);border-radius:8px;padding:8px';
-      div.innerHTML=`<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">${lastModel.paramNames[i]}</div><div id="hist_${i}" style="height:160px"></div>`;
-      histEl.appendChild(div);
-      const samples=bootResult.paramCI[i].samples,est=lastFitResult.params[i];
-      Plotly.newPlot(`hist_${i}`,[
-        {x:samples,type:'histogram',nbinsx:30,marker:{color:'rgba(24,95,165,0.5)',line:{color:'rgba(24,95,165,0.8)',width:0.5}}},
-        {x:[est,est],y:[0,samples.length*0.15],type:'scatter',mode:'lines',line:{color:'#E05C2A',width:2,dash:'dash'}}
-      ],{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:10,color:'#5a5a56'},
-        xaxis:{gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
-        yaxis:{title:'Count',gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
-        showlegend:false,margin:{t:5,r:5,b:30,l:40}},{responsive:true,displayModeBar:false});
-    });
-  },20);
+    S.fullMetricCard('vmr',S.fmt2(vmr_v),`VMR = <strong>${S.fmt2(vmr_v)}</strong>. ${disp.interpretation}`)+
+    `<div class="${vmr_v>1.5?'warn-box':'info-box'}" style="margin-top:0.75rem"><strong>${disp.label}</strong> — ${disp.model}.${vmr_v>1.5&&currentLoss==='sse'?' Consider switching to <strong>NB log-likelihood</strong>.':''}</div>`;
 }
 
 function fitAllModels(){
-  const {trainObs}=getSplit();
+  const split=getSplit();
+  const{trainObs,testObs,horizon}=split;
   if(trainObs.length<4){alert('Need at least 4 training points.');return;}
-  document.getElementById('fitStatus').textContent='Comparing…';
+  document.getElementById('fitStatus').textContent='Comparing all models…';
   document.getElementById('compareBtn').disabled=true;
-  const {testObs,horizon,start,end}=getSplit();
   const t=trainObs.map((_,i)=>i);
+  const hasTest=testObs.length>0&&horizon>0;
   setTimeout(()=>{
     const results=[];
     Models.phenomenological.forEach(model=>{
@@ -645,8 +598,7 @@ function fitAllModels(){
         const testPred=testObs.length>0?Array.from({length:testObs.length},(_,i)=>Math.max(0,model.fn(t.length+i,res.params))):[];
         results.push({
           model,
-          rmse:Core.rmse(trainObs,trainPred),
-          mae:Core.mae(trainObs,trainPred),
+          rmse:Core.rmse(trainObs,trainPred),mae:Core.mae(trainObs,trainPred),
           r2:Core.rSquared(trainObs,trainPred),
           aic:Core.aic(trainObs,trainPred,model.params.length),
           bic:Core.bic(trainObs,trainPred,model.params.length),
@@ -657,8 +609,7 @@ function fitAllModels(){
     });
     const bestAIC=Math.min(...results.filter(r=>r.aic!==null).map(r=>r.aic));
     const bestRMSE=Math.min(...results.filter(r=>r.rmse!==null).map(r=>r.rmse));
-    const bestFRMSE=results.some(r=>r.frmse!==null)?Math.min(...results.filter(r=>r.frmse!==null).map(r=>r.frmse)):null;
-    const hasTest=testObs.length>0&&horizon>0;
+    const bestFRMSE=hasTest?Math.min(...results.filter(r=>r.frmse!==null).map(r=>r.frmse)):null;
     const vmr_v=Core.vmr(trainObs);
     const rows=results.map(r=>{
       if(!r.aic)return`<tr><td>${r.model.name}</td><td colspan="${hasTest?7:5}" style="color:var(--text-tertiary);text-align:center">Failed</td></tr>`;
@@ -674,31 +625,25 @@ function fitAllModels(){
     document.getElementById('comparisonCard').style.display='block';
     document.getElementById('comparisonTable').innerHTML=`
       <table class="compare-table">
-        <thead><tr>
-          <th>Model</th>
-          <th>Train RMSE</th><th>Train R²</th><th>AIC</th><th>BIC</th>
-          ${hasTest?'<th>Forecast RMSE <span class="split-badge test" style="font-size:9px">test</span></th><th>Forecast MAE <span class="split-badge test" style="font-size:9px">test</span></th>':''}
+        <thead><tr><th>Model</th><th>Train RMSE</th><th>Train R²</th><th>AIC</th><th>BIC</th>
+          ${hasTest?'<th>Fcst RMSE <span class="split-badge test" style="font-size:9px">test</span></th><th>Fcst MAE <span class="split-badge test" style="font-size:9px">test</span></th>':''}
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
       <div class="${vmr_v>1.5?'warn-box':'info-box'}" style="margin-top:0.75rem">
         <strong>Objective:</strong> ${currentLoss==='sse'?'Least squares':currentLoss==='poisson'?'Poisson GLM':'NB GLM'} ·
         <strong>VMR:</strong> ${Core.fmt2(vmr_v)} (${Core.dispersionLabel(vmr_v).label}) ·
-        <strong>Best by AIC:</strong> ${results.find(r=>r.aic===bestAIC)?.model.name||'—'}
+        <strong>Best AIC:</strong> ${results.find(r=>r.aic===bestAIC)?.model.name||'—'}
         ${hasTest?` · <strong>Best forecast RMSE:</strong> ${results.find(r=>r.frmse===bestFRMSE)?.model.name||'—'}`:''}
       </div>
-      ${hasTest?`<div class="info-box" style="margin-top:6px;font-size:12px">💡 Compare "Best by AIC" vs "Best forecast RMSE" — if they differ, the lower-AIC model is overfitting the training data.</div>`:''}`;
-    document.getElementById('fitStatus').textContent='Done ✓';
+      ${hasTest?`<div class="info-box" style="margin-top:6px;font-size:12px">💡 If "Best AIC" ≠ "Best forecast RMSE", the lower-AIC model is overfitting the training data.</div>`:''}`;
+    document.getElementById('fitStatus').textContent='Comparison done ✓';
     document.getElementById('compareBtn').disabled=false;
   },10);
 }
 
 document.getElementById('lossNote').textContent=lossNotes['sse'];
-window.onload=()=>{
-  loadDataset('ebola2014',document.querySelector('#datasetPills .pill-btn'));
-  showModelDef('logistic');
-  updateLabels();
-};
+window.onload=()=>{loadDataset('ebola2014',document.querySelector('#datasetPills .pill-btn'));showModelDef('logistic');updateLabels();};
 </script>
 </body>
 </html>
