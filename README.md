@@ -62,7 +62,7 @@ Settings → Pages → Source: `main` / `root` → Save.
 
 ## Citation
 
-Subedi, R. (2026). EpiModelConcepts: Interactive epidemic modeling concepts for teaching and research. Zenodo. https://doi.org/[TBD]
+Subedi, R. (2026). EpiModelConcepts: Interactive epidemic modeling concepts for teaching and research. Zenodo. https://doi.org/10.5281/zenodo.20138554
 
 ---
 
