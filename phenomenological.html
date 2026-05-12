@@ -11,7 +11,7 @@
   <style>
     .progress-bar-wrap{background:var(--bg-secondary);border-radius:4px;height:6px;margin:8px 0;overflow:hidden}
     .progress-bar{height:6px;background:var(--accent);border-radius:4px;transition:width 0.15s;width:0%}
-    .hist-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px}
+    .hist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:10px}
     .split-badge{display:inline-block;font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
     .split-badge.train{background:var(--accent-bg);color:var(--accent-text);border:0.5px solid var(--accent)}
     .split-badge.test{background:var(--success-bg);color:var(--success-text);border:0.5px solid var(--success-text)}
@@ -415,17 +415,18 @@ function showBootstrapPanel(model,params,bootResult){
   const histEl=document.getElementById('paramHistograms');histEl.innerHTML='';
   model.params.forEach((p,i)=>{
     const div=document.createElement('div');
-    div.style.cssText='background:var(--bg-secondary);border-radius:8px;padding:8px';
-    div.innerHTML=`<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">${model.paramNames[i]}</div><div id="hist_${i}" style="height:160px"></div>`;
+    div.style.cssText='background:var(--bg-secondary);border-radius:8px;padding:8px;min-width:0;overflow:hidden';
+    div.innerHTML=`<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">${model.paramNames[i]}</div><div id="hist_${i}" style="height:180px;min-width:0"></div>`;
     histEl.appendChild(div);
     const samples=bootResult.paramCI[i].samples,est=params[i];
     Plotly.newPlot(`hist_${i}`,[
       {x:samples,type:'histogram',nbinsx:30,marker:{color:'rgba(24,95,165,0.5)',line:{color:'rgba(24,95,165,0.8)',width:0.5}}},
       {x:[est,est],y:[0,samples.length*0.15],type:'scatter',mode:'lines',line:{color:'#E05C2A',width:2,dash:'dash'},showlegend:false}
     ],{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:10,color:'#5a5a56'},
-      xaxis:{gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
+      xaxis:{gridcolor:'rgba(0,0,0,0.05)',zeroline:false,automargin:true},
       yaxis:{title:'Count',gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
-      showlegend:false,margin:{t:5,r:5,b:30,l:40}},{responsive:true,displayModeBar:false});
+      autosize:true,
+      showlegend:false,margin:{t:5,r:10,b:40,l:45}},{responsive:true,displayModeBar:false});
   });
 }
 
