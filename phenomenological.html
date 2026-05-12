@@ -541,7 +541,16 @@ function showResults(ctx,bootResult=null){
       `<div class="concept-box" style="margin-top:0.75rem">
         <div class="cb-definition"><strong>Mean forecast bias</strong>Systematic over- or under-prediction. Bias = mean(forecast − observed). Positive = overprediction; negative = underprediction.</div>
         <div class="cb-interpretation"><strong>Your result</strong>Bias = <strong>${S.fmt2(bias)}</strong> ${unitLabel}ly cases. ${Math.abs(bias)<f_rmse*0.3?'Low bias — forecasts are approximately unbiased.':bias>0?'Positive bias — model overpredicts in the forecast window. Common when epidemic declines faster than the fitted curve.':'Negative bias — model underpredicts. Common near epidemic peaks when growth is decelerating.'}</div>
-        <div class="cb-sowhat">Systematic bias suggests the model growth form does not match the actual epidemic trajectory in the forecast window. Try a model with more flexible shape (Richards instead of logistic) or shorten the training window.</div>
+        <div class="cb-sowhat">${(()=>{
+          const suggestions={
+            exponential:'Exponential growth cannot capture deceleration — it will always overpredict once the epidemic slows. Try logistic or Richards.',
+            logistic:'Logistic assumes a symmetric curve. If the epidemic is declining faster or slower than expected, try Richards (adds asymmetry) or Gompertz.',
+            richards:'Richards is already the most flexible single-wave model available here. Consider shortening the training window, checking whether this is a multi-wave epidemic, or using the sub-epidemic framework.',
+            gompertz:'Gompertz has a fixed inflection at K/e which may not match this trajectory. Try Richards for more flexibility in the inflection point.',
+            generalized_logistic:'Try shortening the training window or switching to Richards cumulative form — the generalized logistic may be fitting noise near the peak.'
+          };
+          return suggestions[currentModel]||'Try a more flexible model or shorten the training window.';
+        })()}</div>
       </div>`;
 
     // Forecast vs observed mini chart
