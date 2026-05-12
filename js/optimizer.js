@@ -82,12 +82,25 @@ const Optimizer = (() => {
     };
   }
 
-  /* ── Fit a model to data ── */
-  function fitModel(modelFn, t, obs, init, opts={}) {
-    const loss = sseLoss(modelFn, t, obs);
-    const result = nelderMead(loss, init, opts);
-    const pred = t.map(ti => modelFn(ti, result.params));
-    return { params: result.params, predicted: pred, sse: result.value, iterations: result.iterations };
+  /* ── Fit a model: accepts either a pre-built loss fn or modelFn+t+obs ── */
+  function fitModel(lossFnOrModelFn, initOrT, optsOrObs, initMaybe, optsMaybe) {
+    // Two call signatures:
+    // fitModel(lossFn, init, opts)  — pre-built loss
+    // fitModel(modelFn, t, obs, init, opts) — build SSE internally
+    let lossFn, init, opts;
+    if (typeof initOrT[0] === 'number' && !Array.isArray(initOrT[0])) {
+      // fitModel(lossFn, init, opts)
+      lossFn = lossFnOrModelFn;
+      init = initOrT;
+      opts = optsOrObs || {};
+    } else {
+      // fitModel(modelFn, t, obs, init, opts)
+      lossFn = sseLoss(lossFnOrModelFn, initOrT, optsOrObs);
+      init = initMaybe;
+      opts = optsMaybe || {};
+    }
+    const result = nelderMead(lossFn, init, opts);
+    return { params: result.params, predicted: null, sse: result.value, iterations: result.iterations };
   }
 
   /* ── Bootstrap confidence intervals on parameters ── */
@@ -128,5 +141,65 @@ const Optimizer = (() => {
     return { paramCI: ci, predIntervals };
   }
 
-  return { nelderMead, fitModel, bootstrapCI, sseLoss };
+  /* ── Bootstrap (called from phenomenological.html) ── */
+  function bootstrap(modelFn, lossFnBuilder, t, obs, baseParams, nBoot=300, lossType='sse', theta=2, progressCb=null) {
+    try {
+      const basePred = t.map(ti => modelFn(ti, baseParams));
+      const residuals = obs.map((o,i) => o - basePred[i]);
+      const bootParamSets = [];
+
+      for (let b = 0; b < nBoot; b++) {
+        const bootObs = basePred.map(p => {
+          const r = residuals[Math.floor(Math.random()*obs.length)];
+          return Math.max(0, p + r);
+        });
+        const lf = lossFnBuilder(modelFn, t, bootObs, theta);
+        try {
+          const res = nelderMead(lf, baseParams.slice(), {maxIter:2000, tol:1e-8});
+          bootParamSets.push(res.params);
+        } catch(e) {}
+        if (progressCb && b % 10 === 0) progressCb(b/nBoot);
+      }
+
+      if (bootParamSets.length < 10) return null;
+
+      const paramCI = baseParams.map((_, j) => {
+        const vals = bootParamSets.map(p=>p[j]).filter(isFinite).sort((a,b)=>a-b);
+        return {
+          lo: vals[Math.floor(0.025*vals.length)]||0,
+          hi: vals[Math.floor(0.975*vals.length)]||0,
+          samples: vals
+        };
+      });
+
+      const predCI = t.map(ti => {
+        const vals = bootParamSets.map(bp=>modelFn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
+        return {
+          lo: Math.max(0, vals[Math.floor(0.025*vals.length)]||0),
+          hi: vals[Math.floor(0.975*vals.length)]||0
+        };
+      });
+
+      return { paramCI, predCI, nBoot: bootParamSets.length, bootParams: bootParamSets };
+    } catch(e) { return null; }
+  }
+  function forecast(modelFn, params, t, horizon, bootResult=null) {
+    const lastT = t[t.length-1];
+    const foreT = Array.from({length:horizon}, (_,i) => lastT+1+i);
+    const pred = foreT.map(ti => Math.max(0, modelFn(ti, params)));
+    let lo=null, hi=null;
+    if (bootResult && bootResult.bootParams) {
+      lo = foreT.map(ti => {
+        const vals = bootResult.bootParams.map(bp=>modelFn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
+        return Math.max(0, vals[Math.floor(0.025*vals.length)]||0);
+      });
+      hi = foreT.map(ti => {
+        const vals = bootResult.bootParams.map(bp=>modelFn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
+        return vals[Math.floor(0.975*vals.length)]||0;
+      });
+    }
+    return { pred, lo, hi };
+  }
+
+  return { nelderMead, fitModel, bootstrapCI, sseLoss, bootstrap, forecast };
 })();

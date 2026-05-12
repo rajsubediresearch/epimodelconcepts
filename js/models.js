@@ -37,7 +37,11 @@ const Models = (() => {
         'Intrinsic growth rate',
         'Initial case count at t=0'
       ],
-      init: (obs) => [Math.max(obs.reduce((a,b)=>a+b,0)*1.5, 10), 0.2, Math.max(obs[0],1)],
+      init: (obs) => {
+        const maxObs = Math.max(...obs);
+        const K = maxObs * 1.3; // for cumulative, last value ≈ K; for incidence, sum*1.3
+        return [Math.max(K, 10), 0.3, Math.max(obs[0], 1)];
+      },
       fn: (t, [K, r, I0]) => {
         const A = (K - I0) / Math.max(I0, 0.001);
         return Math.max(0, K / (1 + A * Math.exp(-r * t)));
@@ -63,7 +67,7 @@ const Models = (() => {
         'Asymmetry: a=1 → logistic; a<1 → faster rise; a>1 → slower rise'
       ],
       init: (obs) => {
-        const K = Math.max(obs.reduce((a,b)=>a+b,0)*1.5, 10);
+        const K = Math.max(Math.max(...obs) * 1.3, 10);
         return [K, 0.3, obs.length/2, 1.0];
       },
       fn: (t, [K, r, tm, a]) => {
@@ -90,7 +94,7 @@ const Models = (() => {
         'Time of inflection point (always at C = K/e ≈ 0.368K)'
       ],
       init: (obs) => {
-        const K = Math.max(obs.reduce((a,b)=>a+b,0)*1.5, 10);
+        const K = Math.max(Math.max(...obs) * 1.3, 10);
         return [K, 0.3, obs.length/2];
       },
       fn: (t, [K, r, tm]) => Math.max(0, K * Math.exp(-Math.exp(-r*(t-tm)))),
@@ -115,7 +119,7 @@ const Models = (() => {
         'Shape/asymmetry parameter'
       ],
       init: (obs) => {
-        const K = Math.max(obs.reduce((a,b)=>a+b,0)*1.5, 10);
+        const K = Math.max(obs.reduce((a,b)=>a+b,0) * 1.3, 10);
         return [K, 0.3, obs.length/2, 0.8];
       },
       fn: (t, [K, r, tm, a]) => {
@@ -196,5 +200,36 @@ const Models = (() => {
     }
   };
 
-  return { phenomenological, logLikPoisson, logLikNB, defaultDatasets };
+  /* ── Loss function wrappers (called from phenomenological.html) ── */
+  function sseLoss(modelFn, t, obs) {
+    return params => {
+      try {
+        const pred = t.map(ti => modelFn(ti, params));
+        if (pred.some(v => !isFinite(v) || v < 0)) return 1e15;
+        return obs.reduce((s,o,i) => s+(o-pred[i])**2, 0);
+      } catch(e) { return 1e15; }
+    };
+  }
+
+  function poissonLoss(modelFn, t, obs) {
+    return params => {
+      try {
+        const pred = t.map(ti => modelFn(ti, params));
+        if (pred.some(v => !isFinite(v) || v <= 0)) return 1e15;
+        return -logLikPoisson(obs, pred);
+      } catch(e) { return 1e15; }
+    };
+  }
+
+  function nbLoss(modelFn, t, obs, theta=2) {
+    return params => {
+      try {
+        const pred = t.map(ti => modelFn(ti, params));
+        if (pred.some(v => !isFinite(v) || v <= 0)) return 1e15;
+        return -logLikNB(obs, pred, theta);
+      } catch(e) { return 1e15; }
+    };
+  }
+
+  return { phenomenological, logLikPoisson, logLikNB, sseLoss, poissonLoss, nbLoss, defaultDatasets };
 })();
