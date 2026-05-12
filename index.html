@@ -90,15 +90,25 @@
       </div>
     </a>
 
-  </div>
+    <a href="sir_explorer.html" style="text-decoration:none">
+      <div class="card" style="cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">
+        <div style="display:flex;align-items:flex-start;gap:16px">
+          <div style="font-size:28px;line-height:1">🔬</div>
+          <div>
+            <div style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:4px">SIR / SEIR Explorer</div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:10px">Interactive compartmental model simulator. Choose from SI, SIR, SEIR, SEIR with vital dynamics, or SEIR with waning immunity. Adjust parameters and initial conditions, run RK4 simulations, and get auto-generated plain-language interpretations of key quantities — R₀, peak timing, final size, endemic equilibrium, and recurrent waves.</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+              <span class="tag" style="background:var(--accent-bg);border-color:var(--accent);color:var(--accent-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">SIR / SEIR</span>
+              <span class="tag" style="background:var(--accent-bg);border-color:var(--accent);color:var(--accent-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Vital dynamics</span>
+              <span class="tag" style="background:var(--accent-bg);border-color:var(--accent);color:var(--accent-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Waning immunity</span>
+              <span class="tag" style="background:var(--accent-bg);border-color:var(--accent);color:var(--accent-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">R₀ &amp; endemic equilibrium</span>
+            </div>
+          </div>
+          <span style="font-size:18px;color:var(--text-tertiary);align-self:center;margin-left:auto">→</span>
+        </div>
+      </div>
+    </a>
 
-  <!-- Coming soon -->
-  <div style="border:0.5px dashed var(--border);border-radius:var(--radius-lg);padding:2rem;text-align:center;background:var(--bg-surface)">
-    <div style="font-size:24px;margin-bottom:10px">🚧</div>
-    <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px">Coming soon</div>
-    <div style="font-size:13px;color:var(--text-secondary);max-width:480px;margin:0 auto;line-height:1.6">
-      Serfling seasonal baseline model · Identifiability concepts · Sub-epidemic wave tool · Compartmental model explorer (SEIR, SEIRD, SEIRV)
-    </div>
   </div>
 
   <div class="info-box" style="margin-top:1.5rem">
