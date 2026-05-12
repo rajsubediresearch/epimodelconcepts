@@ -593,10 +593,7 @@ function bsplineBasis(t,df){
 function fitGAM(t,obs,df=6){
   const X=bsplineBasis(t,df);
   function olsSolve(X,y){
-    const Xt=X[0].map((_,i)=>X.map(r=>r[i]));
-    const XtX=Xt.map(row=>row.map((_,j)=>row.reduce((s,_,k)=>s+Xt[row.indexOf?row.indexOf(_):0][k]*Xt[j][k],0)));
-    // Use simple pseudo-inverse via normal equations
-    const n=X.length,p=X[0].length;
+    const p=X[0].length;
     const A=Array.from({length:p},(_,i)=>Array.from({length:p},(_,j)=>X.reduce((s,row)=>s+row[i]*row[j],0)));
     const b=Array.from({length:p},(_,i)=>X.reduce((s,row,k)=>s+row[i]*y[k],0));
     // Gaussian elimination
