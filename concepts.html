@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EpiModelConcepts — Core Concepts</title>
+  <meta name="description" content="Core epidemic modeling concepts: differential equations, R0, Rt, serial interval, generation time, doubling time, herd immunity threshold.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="index.html" class="logo">Epi<span>ModelConcepts</span></a>
+  <nav class="site-nav">
+    <a href="index.html">Home</a>
+    <a href="concepts.html" class="active">Core concepts</a>
+    <a href="phenomenological.html">Phenomenological</a>
+    <a href="statistical.html">Statistical</a>
+  </nav>
+</header>
+
+<main class="page-wrap">
+  <div class="page-hero">
+    <h1>Core concepts</h1>
+    <p>Foundational ideas in epidemic modeling — differential equations, key quantities, and the model taxonomy. These concepts underpin every tool in this suite.</p>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('de',this)">Differential equations</button>
+    <button class="tab-btn" onclick="showTab('r0',this)">R₀ and Rₜ</button>
+    <button class="tab-btn" onclick="showTab('intervals',this)">Time intervals</button>
+    <button class="tab-btn" onclick="showTab('doubling',this)">Growth & doubling</button>
+    <button class="tab-btn" onclick="showTab('taxonomy',this)">Model taxonomy</button>
+    <button class="tab-btn" onclick="showTab('glossary',this)">Glossary</button>
+  </div>
+
+  <!-- DE Primer -->
+  <div id="tab-de" class="tab-panel active">
+    <div class="card">
+      <div class="section-label">What is a differential equation?</div>
+      <div class="concept-box">
+        <div class="cb-definition">
+          <strong>Definition</strong>
+          A differential equation (DE) describes how a quantity changes over time. In epidemic modeling, we write dX/dt to mean "the rate of change of X with respect to time." For example, dI/dt = 5 means the number of infectious individuals is increasing by 5 per day at that moment.
+        </div>
+        <div class="cb-interpretation">
+          <strong>Why DEs for epidemics?</strong>
+          Epidemics are dynamic processes — the number of susceptible, infectious, and recovered individuals all change simultaneously and influence each other. DEs capture these coupled changes naturally. The SIR model is a system of three DEs: one for S, one for I, one for R.
+        </div>
+        <div class="cb-sowhat">You don't need to solve DEs analytically to use epidemic models. Computers solve them numerically — evaluating the rate equations step by step (Euler method) or with higher accuracy (Runge-Kutta). The key skill is interpreting what each term in a DE means biologically.</div>
+      </div>
+
+      <div class="inner-divider">The SIR model as a DE system</div>
+      <div class="equation-box">
+        <div class="eq-label">SIR differential equations</div>
+        dS/dt = −β·S·I/N<br>
+        dI/dt = β·S·I/N − γ·I<br>
+        dR/dt = γ·I
+      </div>
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition">
+          <strong>Reading the SIR equations term by term</strong>
+          β·S·I/N is the force of infection — the rate at which susceptibles become infected. It depends on β (transmission rate), the number of susceptibles S, and the proportion of the population that is infectious (I/N). γ·I is the recovery rate — infectious individuals recover at rate γ, with mean infectious duration 1/γ.
+        </div>
+        <div class="cb-interpretation">
+          <strong>What each term means biologically</strong>
+          −β·S·I/N appears in dS/dt because susceptibles are leaving the S compartment. +β·S·I/N appears in dI/dt because those same individuals are entering I. −γ·I appears in dI/dt because infectious individuals leave I (recover). +γ·I appears in dR/dt. Notice: dS/dt + dI/dt + dR/dt = 0. The total population N is constant.
+        </div>
+        <div class="cb-sowhat">Every term in a well-specified DE system should have a biological interpretation. If you can't explain what a term means, the model may be misspecified.</div>
+      </div>
+
+      <div class="inner-divider">Interactive SIR explorer</div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Adjust parameters to see how the epidemic curve changes.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <div class="section-label">β (transmission rate)</div>
+          <input type="range" min="0.05" max="1.0" step="0.01" value="0.3" id="sirBeta" oninput="updateSIR()" style="width:100%;accent-color:var(--accent)">
+          <div style="font-size:12px;color:var(--text-secondary);text-align:center;font-family:var(--font-mono)" id="sirBetaVal">0.30</div>
+        </div>
+        <div>
+          <div class="section-label">γ (recovery rate)</div>
+          <input type="range" min="0.05" max="0.5" step="0.01" value="0.1" id="sirGamma" oninput="updateSIR()" style="width:100%;accent-color:var(--accent)">
+          <div style="font-size:12px;color:var(--text-secondary);text-align:center;font-family:var(--font-mono)" id="sirGammaVal">0.10</div>
+        </div>
+        <div>
+          <div class="section-label">Population (N)</div>
+          <input type="range" min="1000" max="100000" step="1000" value="10000" id="sirN" oninput="updateSIR()" style="width:100%;accent-color:var(--accent)">
+          <div style="font-size:12px;color:var(--text-secondary);text-align:center;font-family:var(--font-mono)" id="sirNVal">10,000</div>
+        </div>
+      </div>
+      <div id="sirMetrics" class="metrics-grid" style="margin-bottom:12px"></div>
+      <div id="sirChart" style="width:100%;height:300px"></div>
+    </div>
+  </div>
+
+  <!-- R0 and Rt -->
+  <div id="tab-r0" class="tab-panel">
+    <div class="card">
+      <div class="section-label">Basic reproduction number R₀</div>
+      <div class="concept-box">
+        <div class="cb-definition">
+          <strong>Definition</strong>
+          R₀ (R-naught) is the average number of secondary cases generated by one infectious individual in a completely susceptible population, in the absence of interventions. R₀ is a property of the pathogen and the contact structure of the population — not of the epidemic's current state.
+        </div>
+        <div class="cb-interpretation">
+          <strong>What R₀ tells you</strong>
+          R₀ &gt; 1: each case generates more than one new case on average — epidemic grows. R₀ = 1: endemic equilibrium. R₀ &lt; 1: epidemic will die out. For the SIR model, R₀ = β/γ. For measles, R₀ ≈ 12–18. For COVID-19 (original strain), R₀ ≈ 2–3. For Omicron, R₀ ≈ 8–15.
+        </div>
+        <div class="cb-sowhat">R₀ determines the herd immunity threshold: HIT = 1 − 1/R₀. For measles (R₀ = 15), HIT ≈ 93% — this is why measles vaccination coverage must exceed 93% to prevent outbreaks.</div>
+      </div>
+
+      <div class="inner-divider">Effective reproduction number Rₜ</div>
+      <div class="concept-box">
+        <div class="cb-definition">
+          <strong>Definition</strong>
+          Rₜ (R-effective) is the average number of secondary cases generated by one infectious individual at time t, accounting for the current proportion of susceptibles, immunity from prior infection or vaccination, and behavioral interventions. Rₜ = R₀ · S(t)/N in the basic SIR model.
+        </div>
+        <div class="cb-interpretation">
+          <strong>R₀ vs Rₜ</strong>
+          R₀ is fixed for a given pathogen-population pair. Rₜ changes over time as susceptibles are depleted, immunity accumulates, and behaviors change. An epidemic peak occurs when Rₜ crosses 1 from above — each case is now generating less than one new case on average.
+        </div>
+        <div class="cb-sowhat">Rₜ is the key metric for real-time epidemic monitoring. Rₜ &gt; 1 means the epidemic is growing; Rₜ &lt; 1 means it's declining. Rₜ estimation requires careful accounting of reporting delays and the serial interval distribution.</div>
+      </div>
+
+      <div class="inner-divider">R₀ / Rₜ interactive calculator</div>
+      <div class="field-row">
+        <label>β (transmission rate)</label>
+        <input type="number" id="r0Beta" value="0.3" step="0.01" min="0" oninput="updateR0()">
+      </div>
+      <div class="field-row">
+        <label>γ (recovery rate)</label>
+        <input type="number" id="r0Gamma" value="0.1" step="0.01" min="0.001" oninput="updateR0()">
+      </div>
+      <div class="field-row">
+        <label>% Susceptible</label>
+        <input type="number" id="r0Suscept" value="100" step="1" min="0" max="100" oninput="updateR0()">
+      </div>
+      <div id="r0Results" class="metrics-grid" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Time intervals -->
+  <div id="tab-intervals" class="tab-panel">
+    <div class="card">
+      <div class="section-label">Serial interval, generation time, incubation period</div>
+
+      <div class="concept-box">
+        <div class="cb-definition">
+          <strong>Incubation period</strong>
+          The time from infection (exposure to the pathogen) to symptom onset. This is a property of the host-pathogen interaction. Varies across individuals — typically described by a lognormal or Weibull distribution. Example: COVID-19 incubation period ≈ 5 days (range 1–14 days).
+        </div>
+        <div class="cb-interpretation"><strong>Why it matters</strong>
+          The incubation period determines quarantine duration. If incubation is 14 days, a 14-day quarantine is needed to be confident an exposed individual is not infectious.
+        </div>
+        <div class="cb-sowhat">In SEIR models, the exposed period (1/σ) approximates the incubation period minus any pre-symptomatic infectious period.</div>
+      </div>
+
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition">
+          <strong>Generation time</strong>
+          The time between infection of a primary case and infection of a secondary case generated by that primary case. Measures the biological transmission cycle. Requires knowing exact infection times — difficult to observe directly.
+        </div>
+        <div class="cb-interpretation"><strong>Why it matters</strong>
+          Generation time determines how fast an epidemic can grow. Short generation time → faster spread. R₀ per generation time gives the growth rate: r ≈ (R₀−1)/T_g where T_g is the mean generation time.
+        </div>
+        <div class="cb-sowhat">Generation time is the correct denominator for converting R₀ to an epidemic growth rate. Using serial interval instead introduces bias when there is pre-symptomatic transmission.</div>
+      </div>
+
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition">
+          <strong>Serial interval</strong>
+          The time between symptom onset of a primary case and symptom onset of a secondary case generated by that primary case. Observable from contact tracing data (unlike generation time). Can be negative if the secondary case develops symptoms before the primary case (pre-symptomatic transmission).
+        </div>
+        <div class="cb-interpretation"><strong>Serial interval vs generation time</strong>
+          Serial interval ≈ generation time when there is no pre-symptomatic transmission. For COVID-19, pre-symptomatic transmission means serial interval underestimates generation time. For diseases where symptoms precede infectiousness (e.g. some influenza strains), they may be approximately equal.
+        </div>
+        <div class="cb-sowhat">In practice, serial interval is used as a proxy for generation time in Rₜ estimation (e.g. EpiEstim method) because it is directly observable. Be aware of the bias this introduces when pre-symptomatic transmission is substantial.</div>
+      </div>
+
+      <div class="inner-divider">Key values by disease</div>
+      <table class="param-table">
+        <thead><tr><th>Disease</th><th>Incubation (days)</th><th>Serial interval (days)</th><th>R₀</th></tr></thead>
+        <tbody>
+          <tr><td class="p-name">Measles</td><td>10–14</td><td>11–12</td><td>12–18</td></tr>
+          <tr><td class="p-name">COVID-19 (original)</td><td>4–6</td><td>4–8</td><td>2–3</td></tr>
+          <tr><td class="p-name">COVID-19 (Omicron)</td><td>2–4</td><td>2–4</td><td>8–15</td></tr>
+          <tr><td class="p-name">Influenza (seasonal)</td><td>1–4</td><td>2–4</td><td>1.2–1.4</td></tr>
+          <tr><td class="p-name">Ebola</td><td>2–21</td><td>14–16</td><td>1.5–2.5</td></tr>
+          <tr><td class="p-name">Smallpox</td><td>7–19</td><td>14–22</td><td>5–7</td></tr>
+          <tr><td class="p-name">Polio</td><td>4–35</td><td>—</td><td>5–7</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Doubling time -->
+  <div id="tab-doubling" class="tab-panel">
+    <div class="card">
+      <div class="section-label">Growth rate, doubling time, and their relationship</div>
+      <div class="concept-box">
+        <div class="cb-definition">
+          <strong>Epidemic growth rate r</strong>
+          The intrinsic growth rate r describes how fast cases multiply during the exponential growth phase. It is the slope of the log-transformed epidemic curve. Units: per day, per week, etc. If I(t) = I₀·e^(rt), then r = ln(I(t)/I₀)/t.
+        </div>
+        <div class="cb-interpretation"><strong>Growth rate and R₀</strong>
+          For the SIR model: r ≈ β − γ = γ(R₀ − 1). More generally: r ≈ (R₀ − 1)/T_g where T_g is the mean generation time. This links the observable growth rate to the unobservable R₀ — but requires knowing T_g.
+        </div>
+        <div class="cb-sowhat">Estimate r directly from early epidemic data by fitting a log-linear regression (log cases vs time). Then estimate R₀ = 1 + r·T_g, being explicit about your assumed generation time.</div>
+      </div>
+
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition">
+          <strong>Doubling time T₂</strong>
+          The time for the number of cases to double. T₂ = ln(2)/r ≈ 0.693/r. During COVID-19 early 2020, doubling times of 3–7 days were observed in many countries. Measles outbreaks in susceptible populations can double in 7–10 days.
+        </div>
+        <div class="cb-interpretation"><strong>Interpreting doubling time</strong>
+          A 3-day doubling time means cases increase 10-fold in ~10 days and 100-fold in ~20 days. Small changes in r produce large changes in doubling time. Interventions that reduce r by 30% extend doubling time by 43% — this is why early intervention has disproportionate impact.
+        </div>
+        <div class="cb-sowhat">Report doubling time alongside confidence intervals from the regression. A doubling time of 5 days (95% CI: 4–7) conveys both the central estimate and the uncertainty — critical for public health messaging.</div>
+      </div>
+
+      <div class="inner-divider">Growth rate ↔ Doubling time calculator</div>
+      <div class="field-row">
+        <label>Growth rate r</label>
+        <input type="number" id="growthR" value="0.14" step="0.01" oninput="updateGrowth('r')">
+        <span style="font-size:12px;color:var(--text-tertiary)">per time unit</span>
+      </div>
+      <div class="field-row">
+        <label>Doubling time T₂</label>
+        <input type="number" id="growthT2" value="4.95" step="0.1" oninput="updateGrowth('t2')">
+        <span style="font-size:12px;color:var(--text-tertiary)">time units</span>
+      </div>
+      <div class="field-row">
+        <label>Generation time T_g</label>
+        <input type="number" id="growthTg" value="5" step="0.5" oninput="updateGrowth('r')">
+        <span style="font-size:12px;color:var(--text-tertiary)">time units (for R₀ estimate)</span>
+      </div>
+      <div id="growthResults" class="metrics-grid" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Model taxonomy -->
+  <div id="tab-taxonomy" class="tab-panel">
+    <div class="card">
+      <div class="section-label">Epidemic model taxonomy</div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:1rem">A map of the major model classes used in infectious disease epidemiology — what they assume, when to use them, and how they relate.</p>
+
+      <div class="concept-box">
+        <div class="cb-definition"><strong>Phenomenological models</strong>
+          Fit a mathematical curve directly to epidemic data without mechanistic assumptions. Examples: logistic, Richards, Gompertz, sub-epidemic wave model. Parameters are estimated empirically. No compartments — just a growth function.
+        </div>
+        <div class="cb-interpretation"><strong>When to use</strong> Real-time forecasting with limited data, early outbreak assessment, final size estimation, multi-wave decomposition.</div>
+        <div class="cb-sowhat">Best for: "How many total cases will there be?" and "When will the peak occur?" Not suitable for: "What if we vaccinate 40% of the population?"</div>
+      </div>
+
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition"><strong>Compartmental models (mechanistic)</strong>
+          Divide the population into compartments (S, E, I, R, etc.) and write differential equations governing flow between compartments. Parameters have biological interpretations (transmission rate, recovery rate). Examples: SIR, SEIR, SEIRD, SEIRV.
+        </div>
+        <div class="cb-interpretation"><strong>When to use</strong> Counterfactual analyses (intervention scenarios), R₀ estimation, understanding transmission dynamics, vaccine impact modeling.</div>
+        <div class="cb-sowhat">Best for: "What would happen if we vaccinated X% of the population?" or "How does this variant's shorter generation time affect peak timing?" Requires more data and assumptions than phenomenological models.</div>
+      </div>
+
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition"><strong>Statistical models</strong>
+          Use regression frameworks (log-linear, Poisson, Negative Binomial, time series) to model the association between time and case counts. Make explicit distributional assumptions. Include Serfling regression for seasonal baseline estimation.
+        </div>
+        <div class="cb-interpretation"><strong>When to use</strong> Growth rate estimation, excess mortality calculation, surveillance trend analysis, short-term forecasting with uncertainty quantification.</div>
+        <div class="cb-sowhat">Best for: "Is this season's influenza activity above the epidemic threshold?" and "What is the growth rate in this region?" Statistical models are the backbone of routine public health surveillance.</div>
+      </div>
+
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition"><strong>Stochastic models</strong>
+          Incorporate randomness into transmission and recovery events. At small population sizes, chance effects dominate — deterministic models overestimate outbreak probability. Branching processes model early outbreak extinction risk.
+        </div>
+        <div class="cb-interpretation"><strong>When to use</strong> Small outbreak settings (spillover events, border introductions), estimating probability of sustained transmission, superspreading analysis.</div>
+        <div class="cb-sowhat">For large outbreaks (thousands of cases), deterministic models are good approximations. For early detection with tens of cases, stochastic models are essential — the epidemic may go extinct even with R₀ &gt; 1.</div>
+      </div>
+
+      <div class="concept-box" style="margin-top:0.75rem">
+        <div class="cb-definition"><strong>Ensemble and multi-model approaches</strong>
+          Combine forecasts from multiple models using weighted averaging. The CDC FluSight and COVID-19 Forecast Hub use ensemble methods. Weights can be based on past performance (WIS-weighted ensembles) or equal weighting.
+        </div>
+        <div class="cb-interpretation"><strong>When to use</strong> Operational forecasting where reliability across outbreak types matters more than any single model's performance on one outbreak.</div>
+        <div class="cb-sowhat">Ensembles consistently outperform individual models on average, but individual models can outperform ensembles on specific outbreaks. The WIS-based ensemble weighting approach developed in Chowell Lab provides a principled framework for combining models with quantified uncertainty.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Glossary -->
+  <div id="tab-glossary" class="tab-panel">
+    <div class="card">
+      <div class="section-label">Glossary</div>
+      <div id="glossaryContent"></div>
+    </div>
+  </div>
+
+</main>
+
+<footer class="site-footer">
+  EpiModelConcepts — interactive epidemic modeling concepts ·
+  <a href="https://github.com/rajsubediresearch/epimodelconcepts" target="_blank">GitHub</a>
+</footer>
+
+<script src="js/core.js"></script>
+<script>
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ── SIR simulator ── */
+function solveSIR(beta, gamma, N, days=200) {
+  let S=N-1, I=1, R=0;
+  const ts=[0],Ss=[S],Is=[I],Rs=[R];
+  const dt=0.5;
+  for(let t=dt;t<=days;t+=dt){
+    const dS=-beta*S*I/N*dt;
+    const dI=(beta*S*I/N-gamma*I)*dt;
+    const dR=gamma*I*dt;
+    S=Math.max(0,S+dS); I=Math.max(0,I+dI); R+=dR;
+    if(t%1<dt){ts.push(Math.round(t));Ss.push(S);Is.push(I);Rs.push(R);}
+  }
+  return {t:ts,S:Ss,I:Is,R:Rs};
+}
+
+function updateSIR() {
+  const beta=parseFloat(document.getElementById('sirBeta').value)||0.3;
+  const gamma=parseFloat(document.getElementById('sirGamma').value)||0.1;
+  const N=parseFloat(document.getElementById('sirN').value)||10000;
+  document.getElementById('sirBetaVal').textContent=beta.toFixed(2);
+  document.getElementById('sirGammaVal').textContent=gamma.toFixed(2);
+  document.getElementById('sirNVal').textContent=N.toLocaleString();
+
+  const R0=beta/gamma;
+  const HIT=(1-1/R0)*100;
+  const peakI=R0>1?(N*(1-1/R0-Math.log(R0)/R0)):0;
+
+  document.getElementById('sirMetrics').innerHTML=
+    Core.metricCard('R₀', R0.toFixed(2), '', `Each case infects ${R0.toFixed(2)} others on average. ${R0>1?'Epidemic will grow.':'Epidemic will not sustain.'}`)+
+    Core.metricCard('Herd immunity threshold', R0>1?HIT.toFixed(1)+'%':'N/A', '', R0>1?`${HIT.toFixed(1)}% of the population must be immune to halt transmission.`:'R₀ ≤ 1 — herd immunity threshold does not apply.')+
+    Core.metricCard('Mean infectious period', (1/gamma).toFixed(1)+' days', '', `1/γ = ${(1/gamma).toFixed(1)} days. Average time an individual remains infectious.`)+
+    Core.metricCard('Peak infectious', R0>1?Math.round(peakI).toLocaleString()+' individuals':'—','',R0>1?`Approximate peak number simultaneously infectious.`:'');
+
+  const sir=solveSIR(beta,gamma,N);
+  Plotly.newPlot('sirChart',[
+    {x:sir.t,y:sir.S,mode:'lines',name:'Susceptible',line:{color:'#185FA5',width:2}},
+    {x:sir.t,y:sir.I,mode:'lines',name:'Infectious',line:{color:'#E05C2A',width:2.5}},
+    {x:sir.t,y:sir.R,mode:'lines',name:'Recovered',line:{color:'#0A5C36',width:2}}
+  ],{
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui',size:12,color:'#5a5a56'},
+    xaxis:{title:'Days',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+    yaxis:{title:'Individuals',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+    legend:{orientation:'h',y:-0.2},
+    margin:{t:10,r:20,b:60,l:60}
+  },{responsive:true,displayModeBar:false});
+}
+
+/* ── R₀ calculator ── */
+function updateR0() {
+  const beta=parseFloat(document.getElementById('r0Beta').value)||0.3;
+  const gamma=parseFloat(document.getElementById('r0Gamma').value)||0.1;
+  const pct=parseFloat(document.getElementById('r0Suscept').value)||100;
+  const R0=beta/gamma;
+  const Rt=R0*(pct/100);
+  const HIT=R0>1?(1-1/R0)*100:null;
+  document.getElementById('r0Results').innerHTML=
+    Core.metricCard('R₀', R0.toFixed(3), 'β/γ', `Basic reproduction number = ${R0.toFixed(2)}. ${R0>1?'Epidemic can grow.':'Epidemic cannot sustain — will die out.'}`)+
+    Core.metricCard('Rₜ', Rt.toFixed(3), `R₀ × S/N`, `Effective Rₜ = ${Rt.toFixed(2)} given ${pct}% susceptible. ${Rt>1?'Epidemic is growing.':'Epidemic is declining.'}`)+
+    Core.metricCard('Herd immunity threshold', HIT!==null?HIT.toFixed(1)+'%':'N/A', '1 − 1/R₀', HIT!==null?`${HIT.toFixed(1)}% immune coverage needed to halt transmission.`:'R₀ ≤ 1.')+
+    Core.metricCard('Mean infectious period', (1/gamma).toFixed(1)+' days', '1/γ', `Average infectious duration = ${(1/gamma).toFixed(1)} days.`);
+}
+
+/* ── Growth/doubling calculator ── */
+function updateGrowth(changedField) {
+  let r,t2;
+  if(changedField==='r'){
+    r=parseFloat(document.getElementById('growthR').value)||0.14;
+    t2=Math.log(2)/r;
+    document.getElementById('growthT2').value=t2.toFixed(2);
+  } else {
+    t2=parseFloat(document.getElementById('growthT2').value)||4.95;
+    r=Math.log(2)/t2;
+    document.getElementById('growthR').value=r.toFixed(4);
+  }
+  const Tg=parseFloat(document.getElementById('growthTg').value)||5;
+  const R0_est=1+r*Tg;
+  const x10=Math.log(10)/r;
+  document.getElementById('growthResults').innerHTML=
+    Core.metricCard('Growth rate r', r.toFixed(4), 'per time unit', `Cases multiply by e^r ≈ ${Math.exp(r).toFixed(3)} each time unit.`)+
+    Core.metricCard('Doubling time T₂', t2.toFixed(2), 'time units', `Cases double every ${t2.toFixed(1)} time units. Derived as ln(2)/r.`)+
+    Core.metricCard('10-fold time', x10.toFixed(2), 'time units', `Cases increase 10-fold in ${x10.toFixed(1)} time units = ${(x10/t2).toFixed(1)} doubling times.`)+
+    Core.metricCard('R₀ estimate', R0_est.toFixed(2), '1 + r·T_g', `Estimated R₀ = ${R0_est.toFixed(2)} assuming generation time T_g = ${Tg} time units. This estimate is sensitive to the assumed T_g.`);
+}
+
+/* ── Glossary ── */
+const glossaryTerms = [
+  ['Attack rate','The proportion of a population that becomes infected during an outbreak. Final attack rate = total cases / population at risk.'],
+  ['Basic reproduction number (R₀)','Average secondary cases per primary case in a fully susceptible population with no interventions.'],
+  ['Calibration','A probabilistic forecast is well-calibrated if observed values fall within stated prediction intervals at the stated frequency (e.g. 95% of outcomes within 95% intervals).'],
+  ['Compartmental model','An epidemic model that divides the population into compartments (S, E, I, R, etc.) governed by differential equations.'],
+  ['Doubling time','Time for cases to double during exponential growth. T₂ = ln(2)/r where r is the epidemic growth rate.'],
+  ['Effective reproduction number (Rₜ)','Average secondary cases per primary case at time t, accounting for current immunity and interventions.'],
+  ['Ensemble forecast','A combined forecast from multiple models, often outperforming any individual model.'],
+  ['Excess mortality','Deaths above a historical baseline. Used to estimate the full mortality impact of an epidemic including indirect effects.'],
+  ['Force of infection','The per capita rate at which susceptibles become infected. In SIR: λ = β·I/N.'],
+  ['Generation time','Time between infection of a primary case and infection of their secondary case.'],
+  ['Herd immunity threshold (HIT)','Proportion of the population that must be immune (from vaccination or prior infection) to prevent epidemic growth. HIT = 1 − 1/R₀.'],
+  ['Identifiability','A model is identifiable if its parameters can be uniquely determined from observed data. Overparameterized models are non-identifiable — multiple parameter combinations fit equally well.'],
+  ['Incubation period','Time from exposure/infection to symptom onset.'],
+  ['Logistic growth','An S-shaped growth model where growth slows as cases approach a carrying capacity K. dC/dt = r·C·(1−C/K).'],
+  ['Negative Binomial distribution','A count distribution that allows variance to exceed the mean (overdispersion). Parameterized by mean μ and dispersion θ. Variance = μ + μ²/θ.'],
+  ['Overdispersion','When the variance of count data exceeds the mean (VMR > 1). Common in outbreak data due to superspreading and clustering.'],
+  ['Phenomenological model','A model that fits a mathematical function to epidemic data without mechanistic biological assumptions.'],
+  ['Poisson distribution','A count distribution where variance = mean (equidispersion). The baseline model for count data.'],
+  ['Richards model','A generalization of the logistic model with an asymmetry parameter a. Reduces to logistic when a=1.'],
+  ['Serfling model','A regression model for estimating expected (baseline) mortality or disease activity using historical data with seasonal harmonics. Excess defined as observed above upper confidence bound.'],
+  ['Serial interval','Time between symptom onset in a primary case and symptom onset in their secondary case.'],
+  ['Sub-epidemic wave model','A phenomenological model that represents a multi-wave epidemic as a sum of overlapping logistic sub-epidemics. Developed by Chowell and colleagues.'],
+  ['Variance-to-mean ratio (VMR)','Index of dispersion. VMR = 1: equidispersion. VMR > 1: overdispersion. VMR < 1: underdispersion.'],
+  ['WIS (Weighted Interval Score)','A proper scoring rule for probabilistic forecasts. Decomposes into sharpness and calibration components. Lower is better.'],
+];
+
+document.getElementById('glossaryContent').innerHTML = glossaryTerms.sort((a,b)=>a[0].localeCompare(b[0])).map(([term,def])=>`
+  <div class="test-result-row" style="align-items:flex-start;padding:10px 0">
+    <div style="min-width:200px;font-size:13px;font-weight:500;color:var(--text)">${term}</div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6">${def}</div>
+  </div>`).join('');
+
+// Init on load
+window.onload = () => { updateSIR(); updateR0(); updateGrowth('r'); };
+</script>
+</body>
+</html>

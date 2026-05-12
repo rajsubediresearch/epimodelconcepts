@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EpiModelConcepts — Phenomenological Models</title>
+  <meta name="description" content="Interactive phenomenological epidemic growth models: exponential, logistic, Richards, Gompertz, sub-epidemic. Fit to real or user-supplied outbreak data.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="index.html" class="logo">Epi<span>ModelConcepts</span></a>
+  <nav class="site-nav">
+    <a href="index.html">Home</a>
+    <a href="concepts.html">Core concepts</a>
+    <a href="phenomenological.html" class="active">Phenomenological</a>
+    <a href="statistical.html">Statistical</a>
+  </nav>
+</header>
+
+<main class="page-wrap">
+  <div class="page-hero">
+    <h1>Phenomenological models</h1>
+    <p>Phenomenological models describe epidemic curves using mathematical functions without assuming an underlying biological mechanism. They are fitted directly to observed case data to estimate growth, peak timing, and final size — making them powerful tools for real-time outbreak forecasting.</p>
+  </div>
+
+  <!-- Data input card -->
+  <div class="card">
+    <div class="section-label">Outbreak data</div>
+    <div class="field-row">
+      <label>Disease</label>
+      <input type="text" id="diseaseName" value="Ebola" oninput="updateLabels()">
+    </div>
+    <div class="field-row">
+      <label>Location</label>
+      <input type="text" id="placeName" value="West Africa" oninput="updateLabels()">
+    </div>
+    <div class="field-row">
+      <label>Time unit</label>
+      <select id="timeUnit" onchange="updateLabels()">
+        <option value="weekly">Weekly</option>
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label>Data type</label>
+      <select id="dataType" onchange="updateLabels()">
+        <option value="incidence">Incidence (new cases per period)</option>
+        <option value="cumulative">Cumulative cases</option>
+      </select>
+    </div>
+
+    <div class="inner-divider">Load example or enter your own</div>
+    <div class="pill-group">
+      <button class="pill-btn active" onclick="loadDataset('ebola2014',this)">Ebola 2014</button>
+      <button class="pill-btn" onclick="loadDataset('measles2019',this)">Measles DRC 2019</button>
+      <button class="pill-btn" onclick="loadDataset('covid2020',this)">COVID-19 US 2020</button>
+      <button class="pill-btn" onclick="loadDataset('influenza2009',this)">H1N1 2009</button>
+      <button class="pill-btn" onclick="loadDataset('custom',this)">Custom</button>
+    </div>
+
+    <div class="field-row">
+      <label>Case counts</label>
+      <textarea id="dataInput" placeholder="Enter comma or newline-separated numbers&#10;e.g. 1, 3, 8, 22, 68, 200..."></textarea>
+    </div>
+    <p style="font-size:12px;color:var(--text-tertiary);margin-top:4px">Enter values separated by commas, spaces, or new lines.</p>
+
+    <div class="inner-divider">Select model</div>
+    <div class="pill-group" id="modelPills"></div>
+
+    <div style="margin-top:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-primary" onclick="runFit()">Fit model</button>
+      <button class="btn-primary" onclick="fitAllModels()" style="background:var(--bg-secondary);color:var(--accent);border:0.5px solid var(--accent)">Compare all models</button>
+      <span id="fitStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
+    </div>
+  </div>
+
+  <!-- Model definition card (updates on model select) -->
+  <div class="card" id="modelDefinitionCard" style="display:none">
+    <div class="section-label" id="modelDefLabel">Model overview</div>
+    <div id="modelDefinitionContent"></div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsArea" style="display:none">
+
+    <!-- Chart -->
+    <div class="card">
+      <div class="section-label" id="chartLabel">Fitted curve</div>
+      <div id="fitChart" style="width:100%;height:340px"></div>
+    </div>
+
+    <!-- Parameters -->
+    <div class="card">
+      <div class="section-label">Estimated parameters</div>
+      <div id="paramResults"></div>
+    </div>
+
+    <!-- Error metrics -->
+    <div class="card">
+      <div class="section-label">Goodness of fit & error metrics</div>
+      <div id="metricsResults"></div>
+    </div>
+
+    <!-- Dispersion -->
+    <div class="card">
+      <div class="section-label">Dispersion analysis</div>
+      <div id="dispersionResults"></div>
+    </div>
+
+  </div>
+
+  <!-- Model comparison table -->
+  <div class="card" id="comparisonCard" style="display:none">
+    <div class="section-label">Model comparison</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">All models fitted to the same data. Lower AIC/BIC and RMSE indicate better fit.</p>
+    <div id="comparisonTable"></div>
+  </div>
+
+  <!-- Concepts section -->
+  <div class="card">
+    <div class="section-label">About phenomenological models</div>
+    <div class="concept-box">
+      <div class="cb-definition">
+        <strong>What is a phenomenological model?</strong>
+        A phenomenological model describes the shape of an epidemic curve using a mathematical function chosen for its flexibility, not because it reflects biological mechanisms. The model is fitted to observed data, and parameters are estimated empirically. Examples include the logistic, Richards, and Gompertz growth models.
+      </div>
+      <div class="cb-interpretation">
+        <strong>How does this differ from mechanistic models?</strong>
+        Mechanistic models (SIR, SEIR) derive their equations from biological assumptions about transmission, incubation, and recovery. Phenomenological models skip these assumptions and directly fit a curve to data — making them faster to apply but less interpretable biologically.
+      </div>
+      <div class="cb-sowhat">Phenomenological models are the tool of choice for real-time forecasting when data is limited and quick projections are needed. They are less appropriate for counterfactual analyses ("what if we intervened?") — for that, use a mechanistic model.</div>
+    </div>
+
+    <div class="concept-box" style="margin-top:0.75rem">
+      <div class="cb-definition">
+        <strong>Differential equations and epidemic growth</strong>
+        Each phenomenological model can be expressed as a differential equation dC/dt = f(C, t, θ). This describes the instantaneous rate of change of cumulative cases C as a function of time, the current case count, and model parameters θ. Solving the DE gives the growth curve. The logistic DE is dC/dt = r·C·(1−C/K): growth is fastest when C is small (exponential phase) and slows as C approaches K (saturation).
+      </div>
+      <div class="cb-interpretation">
+        <strong>Why does the DE form matter?</strong>
+        The DE form reveals the biological intuition. In logistic growth, the term (1−C/K) acts as a "brake" — as cases accumulate, growth slows. The Richards model adds an asymmetry exponent to this brake, allowing faster rises than falls (or vice versa). The sub-epidemic model replaces the single brake with a sum of overlapping brakes — one per wave.
+      </div>
+      <div class="cb-sowhat">When interpreting fitted parameters, think about what the DE says: r controls how fast the curve rises, K controls where it stops, and shape parameters control the symmetry of the rise and fall.</div>
+    </div>
+  </div>
+
+</main>
+
+<footer class="site-footer">
+  EpiModelConcepts — interactive epidemic modeling concepts ·
+  <a href="https://github.com/rajsubediresearch/epimodelconcepts" target="_blank">GitHub</a>
+</footer>
+
+<script src="js/core.js"></script>
+<script src="js/optimizer.js"></script>
+<script src="js/models.js"></script>
+<script>
+let currentModel = 'logistic';
+let currentData = [];
+let currentUnit = 'weekly';
+let currentDisease = 'Ebola';
+let currentPlace = 'West Africa';
+
+// Build model pills
+const pills = document.getElementById('modelPills');
+Models.phenomenological.forEach(m => {
+  const btn = document.createElement('button');
+  btn.className = 'pill-btn' + (m.id === currentModel ? ' active' : '');
+  btn.textContent = m.name;
+  btn.onclick = () => {
+    document.querySelectorAll('#modelPills .pill-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentModel = m.id;
+    showModelDefinition(m.id);
+  };
+  pills.appendChild(btn);
+});
+
+function loadDataset(key, btn) {
+  document.querySelectorAll('.pill-group:first-of-type .pill-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if (key === 'custom') {
+    document.getElementById('dataInput').value = '';
+    document.getElementById('dataInput').focus();
+    return;
+  }
+  const ds = Models.defaultDatasets[key];
+  if (!ds) return;
+  document.getElementById('dataInput').value = ds.data.join(', ');
+  document.getElementById('diseaseName').value = ds.disease;
+  document.getElementById('placeName').value = ds.place;
+  document.getElementById('timeUnit').value = ds.unit;
+  updateLabels();
+}
+
+function updateLabels() {
+  currentUnit = document.getElementById('timeUnit').value;
+  currentDisease = document.getElementById('diseaseName').value || 'Disease';
+  currentPlace = document.getElementById('placeName').value || 'Location';
+}
+
+function showModelDefinition(id) {
+  const m = Models.phenomenological.find(x=>x.id===id);
+  if (!m) return;
+  document.getElementById('modelDefinitionCard').style.display='block';
+  document.getElementById('modelDefLabel').textContent = m.name;
+  document.getElementById('modelDefinitionContent').innerHTML = `
+    <div class="concept-box">
+      <div class="cb-definition"><strong>Definition</strong>${m.definition}</div>
+      <div class="cb-interpretation"><strong>Model equation</strong>
+        <div class="equation-box" style="margin-top:8px">
+          <div class="eq-label">Incidence / Growth form</div>
+          ${m.equationDisplay}
+        </div>
+        <div class="equation-box" style="margin-top:6px">
+          <div class="eq-label">Differential equation form</div>
+          ${m.deDisplay}
+        </div>
+      </div>
+      <div class="cb-sowhat">${m.strengths.map(s=>'✓ '+s).join(' · ')}</div>
+    </div>
+    <div style="margin-top:0.75rem">
+      <table class="param-table">
+        <thead><tr><th>Parameter</th><th>Symbol</th><th>Description</th></tr></thead>
+        <tbody>
+          ${m.params.map((p,i)=>`<tr>
+            <td class="p-name">${m.paramNames[i]}</td>
+            <td>${p}</td>
+            <td class="p-desc">${m.paramDescriptions[i]}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="warn-box" style="margin-top:0.75rem">
+      ⚠ Limitations: ${m.limitations.join(' · ')}
+    </div>`;
+}
+
+function getObs() {
+  const raw = document.getElementById('dataInput').value;
+  return Core.parseData(raw);
+}
+
+function runFit() {
+  const obs = getObs();
+  if (obs.length < 4) {
+    document.getElementById('fitStatus').textContent = 'Need at least 4 data points.';
+    return;
+  }
+  updateLabels();
+  document.getElementById('fitStatus').textContent = 'Fitting…';
+  const model = Models.phenomenological.find(m=>m.id===currentModel);
+  if (!model) return;
+
+  setTimeout(() => {
+    try {
+      const t = obs.map((_,i)=>i);
+      const init = model.init(obs);
+      const result = Optimizer.fitModel(model.fn, t, obs, init, {maxIter:8000, tol:1e-12});
+      document.getElementById('fitStatus').textContent = `Converged in ${result.iterations} iterations`;
+      showResults(model, obs, t, result);
+      showModelDefinition(currentModel);
+    } catch(e) {
+      document.getElementById('fitStatus').textContent = 'Fit failed — try different data or model.';
+      console.error(e);
+    }
+  }, 10);
+}
+
+function showResults(model, obs, t, result) {
+  const S = Core;
+  const pred = result.predicted;
+  const disease = currentDisease;
+  const place = currentPlace;
+  const unit = currentUnit;
+  const labels = S.timeLabels(obs.length, unit);
+  const unitLabel = unit.replace('ly','');
+
+  document.getElementById('resultsArea').style.display='block';
+  document.getElementById('chartLabel').textContent = `${model.name} — ${disease}, ${place}`;
+
+  // Plot
+  const traces = [
+    {
+      x: labels, y: obs,
+      mode: 'markers', name: 'Observed',
+      marker: { color: 'var(--accent)', size: 7 },
+      type: 'scatter'
+    },
+    {
+      x: labels, y: pred,
+      mode: 'lines', name: `${model.name} fit`,
+      line: { color: '#E05C2A', width: 2.5 },
+      type: 'scatter'
+    }
+  ];
+
+  const layout = {
+    paper_bgcolor: 'transparent',
+    plot_bgcolor: 'transparent',
+    font: { family: 'DM Sans, system-ui', size: 12, color: '#5a5a56' },
+    xaxis: { title: `Time (${unit})`, gridcolor: 'rgba(0,0,0,0.06)', zeroline: false },
+    yaxis: { title: `${disease} cases`, gridcolor: 'rgba(0,0,0,0.06)', zeroline: false },
+    legend: { orientation:'h', y:-0.2 },
+    margin: { t:20, r:20, b:60, l:60 }
+  };
+
+  Plotly.newPlot('fitChart', traces, layout, {responsive:true, displayModeBar:false});
+
+  // Parameters
+  const paramHTML = `<table class="param-table">
+    <thead><tr><th>Parameter</th><th>Estimate</th><th>Description</th></tr></thead>
+    <tbody>
+      ${model.params.map((p,i)=>`<tr>
+        <td class="p-name">${model.paramNames[i]}</td>
+        <td>${S.fmt(result.params[i], 3)}</td>
+        <td class="p-desc">${model.paramDescriptions[i]}</td>
+      </tr>`).join('')}
+      ${model.doublingTime ? `<tr>
+        <td class="p-name">Doubling time</td>
+        <td>${model.doublingTime(result.params)!==null?S.fmt(model.doublingTime(result.params),2)+' '+unitLabel+'s':'—'}</td>
+        <td class="p-desc">Time for cases to double during exponential phase</td>
+      </tr>`:''}
+    </tbody>
+  </table>`;
+  document.getElementById('paramResults').innerHTML = paramHTML;
+
+  // Error metrics
+  const mae_v  = S.mae(obs, pred);
+  const rmse_v = S.rmse(obs, pred);
+  const mape_v = S.mape(obs, pred);
+  const r2_v   = S.rSquared(obs, pred);
+  const aic_v  = S.aic(obs, pred, model.params.length);
+  const bic_v  = S.bic(obs, pred, model.params.length);
+
+  document.getElementById('metricsResults').innerHTML =
+    S.fullMetricCard('rmse', S.fmt2(rmse_v),
+      `Your ${model.name} model has RMSE = <strong>${S.fmt2(rmse_v)}</strong> cases per ${unitLabel} for ${disease} in ${place}. On average, model predictions deviate from observed counts by ${S.fmt2(rmse_v)} cases.`) +
+    S.fullMetricCard('mae', S.fmt2(mae_v),
+      `MAE = <strong>${S.fmt2(mae_v)}</strong> cases per ${unitLabel}. The typical absolute prediction error is ${S.fmt2(mae_v)} cases.`) +
+    S.fullMetricCard('mape', mape_v!==null?S.fmt2(mape_v)+'%':'—',
+      mape_v!==null?`MAPE = <strong>${S.fmt2(mape_v)}%</strong>. Model predictions are off by ${S.fmt2(mape_v)}% of observed values on average.`:'MAPE could not be computed (zeros in data).') +
+    S.fullMetricCard('r2', S.fmt(r2_v,4),
+      `R² = <strong>${S.fmt(r2_v,4)}</strong>. The ${model.name} model explains ${S.fmt2(r2_v*100)}% of variance in ${disease} case counts.`) +
+    S.fullMetricCard('aic', S.fmt2(aic_v),
+      `AIC = <strong>${S.fmt2(aic_v)}</strong> with ${model.params.length} parameters. Use this to compare against other models on the same dataset — lower is better.`) +
+    S.fullMetricCard('bic', S.fmt2(bic_v),
+      `BIC = <strong>${S.fmt2(bic_v)}</strong>. BIC applies a stronger complexity penalty than AIC (especially for larger datasets).`);
+
+  // Dispersion
+  const vmr_v = S.vmr(obs);
+  const disp = S.dispersionLabel(vmr_v);
+  const residuals = obs.map((o,i)=>o-pred[i]);
+  const vmr_res = S.vmr(residuals.map(r=>Math.abs(r)));
+
+  document.getElementById('dispersionResults').innerHTML =
+    S.fullMetricCard('vmr', S.fmt2(vmr_v),
+      `The ${disease} case counts have VMR = <strong>${S.fmt2(vmr_v)}</strong>. ${disp.interpretation} ${disp.model}.`) +
+    `<div class="info-box" style="margin-top:0.75rem">
+      <strong>Dispersion verdict:</strong> ${disp.label} (VMR = ${S.fmt2(vmr_v)}). ${disp.interpretation}<br>
+      <strong>Recommended count model:</strong> ${disp.model}
+    </div>`;
+}
+
+function fitAllModels() {
+  const obs = getObs();
+  if (obs.length < 4) { alert('Need at least 4 data points.'); return; }
+  updateLabels();
+  document.getElementById('fitStatus').textContent = 'Fitting all models…';
+  const t = obs.map((_,i)=>i);
+
+  setTimeout(() => {
+    const results = [];
+    Models.phenomenological.forEach(model => {
+      try {
+        const init = model.init(obs);
+        const res = Optimizer.fitModel(model.fn, t, obs, init, {maxIter:8000, tol:1e-12});
+        results.push({
+          model,
+          rmse: Core.rmse(obs, res.predicted),
+          mae:  Core.mae(obs, res.predicted),
+          r2:   Core.rSquared(obs, res.predicted),
+          aic:  Core.aic(obs, res.predicted, model.params.length),
+          bic:  Core.bic(obs, res.predicted, model.params.length),
+          params: res.params
+        });
+      } catch(e) {
+        results.push({ model, rmse:null, mae:null, r2:null, aic:null, bic:null });
+      }
+    });
+
+    const bestAIC = Math.min(...results.filter(r=>r.aic!==null).map(r=>r.aic));
+    const bestRMSE = Math.min(...results.filter(r=>r.rmse!==null).map(r=>r.rmse));
+
+    const rows = results.map(r => {
+      if (r.aic === null) return `<tr><td>${r.model.name}</td><td colspan="5" style="color:var(--text-tertiary);text-align:center">Failed to converge</td></tr>`;
+      const aic_cls = r.aic === bestAIC ? 'best' : (r.aic > bestAIC+10 ? 'worst' : '');
+      const rmse_cls = r.rmse === bestRMSE ? 'best' : '';
+      return `<tr>
+        <td>${r.model.name} (${r.model.params.length} params)</td>
+        <td class="${rmse_cls}">${Core.fmt2(r.rmse)}</td>
+        <td>${Core.fmt2(r.mae)}</td>
+        <td>${Core.fmt(r.r2,4)}</td>
+        <td class="${aic_cls}">${Core.fmt2(r.aic)}</td>
+        <td>${Core.fmt2(r.bic)}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('comparisonCard').style.display='block';
+    document.getElementById('comparisonTable').innerHTML = `
+      <table class="compare-table">
+        <thead><tr><th>Model</th><th>RMSE</th><th>MAE</th><th>R²</th><th>AIC</th><th>BIC</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="info-box" style="margin-top:0.75rem">
+        <strong>Best fit by AIC:</strong> ${results.find(r=>r.aic===bestAIC)?.model.name||'—'} —
+        highlighted in green. Models with ΔAIC &gt; 10 vs the best are highlighted in orange and have substantially weaker support.
+      </div>`;
+    document.getElementById('fitStatus').textContent = 'All models fitted.';
+  }, 10);
+}
+
+// Load default on page load
+window.onload = () => {
+  loadDataset('ebola2014', document.querySelector('.pill-group .pill-btn'));
+  showModelDefinition('logistic');
+};
+</script>
+</body>
+</html>
