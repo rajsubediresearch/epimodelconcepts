@@ -335,23 +335,33 @@ function runFit(){
 
   setTimeout(()=>{
     try{
-      const t=trainObs.map((_,i)=>i);
+      // Strip leading zeros before fitting — models initialise poorly when the
+      // series starts at zero. Fit on the non-zero suffix; predict back on the
+      // full window (leading zeros get near-zero predictions naturally).
+      const firstNonZero=trainObs.findIndex(v=>v>0);
+      const fitObs=firstNonZero>0 ? trainObs.slice(firstNonZero) : trainObs;
+      const tOffset=Math.max(0,firstNonZero);
+      const t=fitObs.map((_,i)=>i);
 
       // Two-wave guard: warn if second wave not detectable in training data
       if(model.twoWave){
-        const n=trainObs.length;
-        const p1=trainObs.indexOf(Math.max(...trainObs.slice(0,Math.floor(n*0.6))));
+        const n=fitObs.length;
+        const p1=fitObs.indexOf(Math.max(...fitObs.slice(0,Math.floor(n*0.6))));
         let tr=p1;
-        for(let i=p1+1;i<n-2;i++){if(trainObs[i]<trainObs[tr])tr=i;else if(trainObs[i]>trainObs[tr]*1.1)break;}
-        const wave2Signal=trainObs.slice(tr).some((v,i,a)=>i>2&&v>a[0]*1.2);
+        for(let i=p1+1;i<n-2;i++){if(fitObs[i]<fitObs[tr])tr=i;else if(fitObs[i]>fitObs[tr]*1.1)break;}
+        const wave2Signal=fitObs.slice(tr).some((v,i,a)=>i>2&&v>a[0]*1.2);
         if(!wave2Signal){
           document.getElementById('fitStatus').textContent='⚠ Warning: second wave not detectable in training window — two-wave fit unreliable.';
         }
       }
 
-      const lf=getLossFn(model,t,trainObs);
-      const res=Optimizer.fitModel(lf,model.init(trainObs),{maxIter:8000,tol:1e-12});
-      const trainPred=t.map(ti=>Math.max(0,model.fn(ti,res.params)));
+      const lf=getLossFn(model,t,fitObs);
+      const res=Optimizer.fitModel(lf,model.init(fitObs),{maxIter:8000,tol:1e-12});
+
+      // Predict on full training window — leading-zero periods get fn evaluated
+      // at negative t which clamps to ~0 for all models
+      const fullT=trainObs.map((_,i)=>i-tOffset);
+      const trainPred=fullT.map(ti=>Math.max(0,model.fn(ti,res.params)));
       const forecastT=Array.from({length:horizon},(_,i)=>t.length+i);
       const forecastPred=forecastT.map(ti=>Math.max(0,model.fn(ti,res.params)));
       const testPred=forecastPred.slice(0,testObs.length);
@@ -365,7 +375,8 @@ function runFit(){
       if(nBoot>0){
         document.getElementById('fitStatus').textContent='Fitted ✓ — running bootstrap…';
         document.getElementById('progressWrap').style.display='block';
-        runBootstrapAuto(model,trainObs,t,res.params,nBoot,ctx,()=>{
+        // Bootstrap on fitObs (leading zeros stripped) so resampling is clean
+        runBootstrapAuto(model,fitObs,t,res.params,nBoot,ctx,()=>{
           document.getElementById('fitBtn').disabled=false;
           document.getElementById('compareBtn').disabled=false;
           document.getElementById('progressWrap').style.display='none';
