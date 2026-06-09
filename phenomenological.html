@@ -318,9 +318,9 @@ function getLossFn(model,t,obs){
   return wrap(Models.sseLoss(model.fn,t,obs));
 }
 function getLossFnBuilder(){
-  if(currentLoss==='poisson')return(fn,t,obs,_,constraint)=>{const b=Models.poissonLoss(fn,t,obs);return constraint?(p=>constraint(p)?b(p):1e15):b;};
-  if(currentLoss==='nb')return(fn,t,obs,th,constraint)=>{const b=Models.nbLoss(fn,t,obs,th||2);return constraint?(p=>constraint(p)?b(p):1e15):b;};
-  return(fn,t,obs,_,constraint)=>{const b=Models.sseLoss(fn,t,obs);return constraint?(p=>constraint(p)?b(p):1e15):b;};
+  if(currentLoss==='poisson')return(fn,t,obs,th)=>Models.poissonLoss(fn,t,obs);
+  if(currentLoss==='nb')return(fn,t,obs,th)=>Models.nbLoss(fn,t,obs,th||2);
+  return(fn,t,obs,th)=>Models.sseLoss(fn,t,obs);
 }
 
 function runFit(){
