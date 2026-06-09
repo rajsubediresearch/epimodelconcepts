@@ -35,7 +35,7 @@
 <main class="page-wrap">
   <div class="page-hero">
     <h1>Phenomenological models</h1>
-    <p>Fit mathematical growth curves to epidemic data. Define a training window and forecast horizon to evaluate out-of-sample performance, or fit the full dataset for final estimation. Bootstrap CIs run automatically after fitting.</p>
+    <p>Fit mathematical growth curves to epidemic data — from simple exponential and logistic growth to the Generalized Growth Model (GGM) and Generalized Richards Model (GRM). Define a training window and forecast horizon to evaluate out-of-sample performance, or fit the full dataset for final estimation. Bootstrap CIs run automatically after fitting.</p>
   </div>
 
   <div class="card">
@@ -108,7 +108,7 @@
       <span style="font-size:12px;color:var(--text-tertiary)">Set to 0 to skip</span>
     </div>
     <div class="info-box" style="font-size:12px;margin-top:4px">
-      Bootstrap runs automatically after fitting. 300 iterations recommended (~3–5s). Set to 0 to get point estimates only. Higher = more reliable CIs.
+      Bootstrap runs automatically after fitting. 300 iterations recommended (~3–5s). Set to 0 to get point estimates only. Higher = more reliable CIs. <strong>Note:</strong> GRM uses numerical integration and is slower to fit — consider 100–200 bootstrap iterations for GRM.
     </div>
 
     <div style="margin-top:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -196,7 +196,7 @@
       <div class="cb-interpretation"><strong>The train/test split</strong>
         Fitting on weeks 1–24 and evaluating on weeks 25–28 gives an honest estimate of forecast performance. A model with slightly worse in-sample fit but better out-of-sample RMSE is the preferred choice for forecasting. This is the basis of cross-validation and proper scoring rules like WIS.
       </div>
-      <div class="cb-sowhat">If your model has excellent training R² but high forecast RMSE, it is overfitting — too many parameters relative to data length. Try a simpler model (logistic instead of Richards) or collect more data before the peak.</div>
+      <div class="cb-sowhat">If your model has excellent training R² but high forecast RMSE, it is overfitting — too many parameters relative to data length. Try a simpler model (Logistic instead of Richards, or GGM for the growth phase only) or collect more data before the peak. For sub-exponential early growth, GGM or GRM are more appropriate than Exponential or Logistic.</div>
     </div>
   </div>
 </main>
@@ -546,11 +546,13 @@ function showResults(ctx,bootResult=null){
         <div class="cb-interpretation"><strong>Your result</strong>Bias = <strong>${S.fmt2(bias)}</strong> ${unitLabel}ly cases. ${Math.abs(bias)<f_rmse*0.3?'Low bias — forecasts are approximately unbiased.':bias>0?'Positive bias — model overpredicts in the forecast window. Common when epidemic declines faster than the fitted curve.':'Negative bias — model underpredicts. Common near epidemic peaks when growth is decelerating.'}</div>
         <div class="cb-sowhat">${(()=>{
           const suggestions={
-            exponential:'Exponential growth cannot capture deceleration — it will always overpredict once the epidemic slows. Try logistic or Richards.',
-            logistic:'Logistic assumes a symmetric curve. If the epidemic is declining faster or slower than expected, try Richards (adds asymmetry) or Gompertz.',
-            richards:'Richards is already the most flexible single-wave model available here. Consider shortening the training window, checking whether this is a multi-wave epidemic, or using the sub-epidemic framework.',
-            gompertz:'Gompertz has a fixed inflection at K/e which may not match this trajectory. Try Richards for more flexibility in the inflection point.',
-            generalized_logistic:'Try shortening the training window or switching to Richards cumulative form — the generalized logistic may be fitting noise near the peak.'
+            exponential:'Exponential growth cannot capture deceleration — it will always overpredict once the epidemic slows. Try GGM (adds sub-exponential scaling), Logistic, or Richards.',
+            ggm:'GGM has no carrying capacity — it will always overpredict once the epidemic peaks or decelerates toward saturation. Try Logistic, Richards, or GRM if you have data past the inflection.',
+            logistic:'Logistic assumes a symmetric curve (inflection always at K/2). If the epidemic declines faster or slower than it rose, try Richards or GRM — both add asymmetry.',
+            richards:'Richards is flexible but p is fixed at 1. If early-phase sub-exponential growth is suspected, try GRM (adds the scaling parameter p). Also check whether this is a multi-wave epidemic.',
+            gompertz:'Gompertz has a fixed inflection at K/e ≈ 0.368K which may not match this trajectory. Try Richards (flexible inflection) or GRM (also controls early growth scaling).',
+            grm:'GRM is the most flexible single-wave model here. If bias is still high, consider whether this is a multi-wave epidemic, shorten the training window, or check that p and a are identifiable with your data length.',
+            generalized_logistic:'Try shortening the training window or switching to Richards cumulative form — the generalized logistic (incidence form) may be fitting noise near the peak.'
           };
           return suggestions[currentModel]||'Try a more flexible model or shorten the training window.';
         })()}</div>

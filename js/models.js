@@ -26,12 +26,49 @@ const Models = (() => {
     },
 
     {
+      id: 'ggm',
+      name: 'Generalized Growth Model (GGM)',
+      // Cumulative closed form: C(t) = [C0^(1-p) + r*(1-p)*t]^(1/(1-p))  for p≠1
+      // Incidence:             I(t) = dC/dt = r * C(t)^p
+      equationDisplay: 'C(t) = [C₀^(1−p) + r·(1−p)·t]^(1/(1−p))   (p ≠ 1)',
+      deDisplay: 'dC/dt = r · C^p',
+      params: ['C0','r','p'],
+      paramNames: ['C₀ (initial cases)', 'r (growth rate)', 'p (scaling)'],
+      paramDescriptions: [
+        'Cumulative case count at t=0 (must be > 0)',
+        'Growth rate constant',
+        'Scaling of growth: p=1 → exponential; p=0 → constant linear; 0<p<1 → sub-exponential (polynomial); p>1 → super-exponential. Epidemic context: p typically 0.6–0.9 for early outbreak with interventions.'
+      ],
+      init: (obs) => {
+        // Use first two points to rough-estimate r and p
+        const C0 = Math.max(obs[0], 1);
+        return [C0, 0.3, 0.8];
+      },
+      fn: (t, [C0, r, p]) => {
+        const C0s = Math.max(C0, 1e-6);
+        const ps  = Math.max(0.01, Math.min(p, 0.9999)); // keep numeric stability; p=1 handled below
+        if (Math.abs(ps - 1) < 1e-4) {
+          // Exponential limit
+          return Math.max(0, C0s * Math.exp(r * t));
+        }
+        const inner = Math.pow(C0s, 1 - ps) + r * (1 - ps) * t;
+        if (inner <= 0) return 0;
+        return Math.max(0, Math.pow(inner, 1 / (1 - ps)));
+      },
+      isCumulative: true,
+      definition: 'Introduced by Viboud et al. (2016), the GGM generalizes exponential growth by allowing sub-exponential (polynomial) dynamics through the scaling parameter p. When p=1 it reduces to exponential; when p<1 it captures early epidemic slowdown due to spatial heterogeneity, clustering, or interventions. It is designed for the early growth phase — it has no carrying capacity and will grow unbounded. Use for short-horizon early-phase forecasting.',
+      assumptions: ['No carrying capacity — growth phase only','Power-law scaling of incidence on cumulative burden','Homogeneous or weakly heterogeneous mixing'],
+      strengths: ['Only 3 parameters — parsimonious','Captures sub-exponential growth common in real outbreaks','Closed-form solution — fast fitting','Doubling time depends on epidemic size (not constant)'],
+      limitations: ['No carrying capacity K — cannot capture peak or decline','Not suitable once epidemic is near its peak','p poorly identified from very sparse early data'],
+    },
+
+    {
       id: 'logistic',
       name: 'Logistic Growth',
-      equationDisplay: 'C(t) = K / (1 + ((K−I₀)/I₀) · e^(−rt))',
+      equationDisplay: 'C(t) = K / (1 + A · e^(−rt)),   A = (K − C₀)/C₀',
       deDisplay: 'dC/dt = r · C · (1 − C/K)',
       params: ['K','r','I0'],
-      paramNames: ['K (final size)', 'r (growth rate)', 'I₀ (initial cases)'],
+      paramNames: ['K (final size)', 'r (growth rate)', 'C₀ (initial cases)'],
       paramDescriptions: [
         'Final cumulative epidemic size',
         'Intrinsic growth rate',
@@ -39,7 +76,7 @@ const Models = (() => {
       ],
       init: (obs) => {
         const maxObs = Math.max(...obs);
-        const K = maxObs * 1.3; // for cumulative, last value ≈ K; for incidence, sum*1.3
+        const K = maxObs * 1.3;
         return [Math.max(K, 10), 0.3, Math.max(obs[0], 1)];
       },
       fn: (t, [K, r, I0]) => {
@@ -47,51 +84,53 @@ const Models = (() => {
         return Math.max(0, K / (1 + A * Math.exp(-r * t)));
       },
       isCumulative: true,
-      definition: 'Extends exponential growth by adding carrying capacity K. Growth slows as cases approach K, producing a symmetric S-shaped cumulative curve. The incidence (new cases) follows a bell-shaped curve peaking at K/2.',
-      assumptions: ['Fixed carrying capacity K','Symmetric growth and decline','Single epidemic wave','Homogeneous population'],
-      strengths: ['Captures full epidemic arc','Interpretable parameters','Good for single-wave outbreaks'],
+      definition: 'Extends exponential growth by adding carrying capacity K. Growth slows as cases approach K, producing a symmetric S-shaped cumulative curve. The inflection always occurs at C = K/2, and the incidence (new cases) follows a perfectly symmetric bell-shaped curve. Real outbreaks are rarely symmetric — see Richards for a more flexible alternative.',
+      assumptions: ['Fixed carrying capacity K','Symmetric growth and decline — inflection always at K/2','Single epidemic wave','Homogeneous population'],
+      strengths: ['Captures full epidemic arc','Interpretable parameters','Good for single-wave outbreaks with symmetric dynamics'],
       limitations: ['Symmetric curve — real outbreaks often asymmetric','Cannot capture multiple waves','K sensitive to early data'],
     },
 
     {
       id: 'richards',
       name: 'Richards Model',
-      equationDisplay: 'C(t) = K / (1 + exp(−r(t−t_m)))^(1/a)',
+      // Closed-form cumulative solution of dC/dt = r·C·[1−(C/K)^a]
+      equationDisplay: 'C(t) = K · [1 + a · e^(−r·a·(t − t_m))]^(−1/a)',
       deDisplay: 'dC/dt = r · C · [1 − (C/K)^a]',
       params: ['K','r','tm','a'],
-      paramNames: ['K (final size)', 'r (growth rate)', 't_m (inflection)', 'a (asymmetry)'],
+      paramNames: ['K (final size)', 'r (growth rate)', 't_m (inflection time)', 'a (asymmetry)'],
       paramDescriptions: [
         'Final cumulative epidemic size',
-        'Growth rate at inflection point',
-        'Time of maximum incidence',
-        'Asymmetry: a=1 → logistic; a<1 → faster rise; a>1 → slower rise'
+        'Growth rate at the inflection point',
+        'Time at which incidence is maximum (inflection of cumulative curve)',
+        'Asymmetry parameter: a=1 → logistic (symmetric, inflection at K/2); a<1 → inflection below K/2 (faster rise, slower decline); a>1 → inflection above K/2 (slower rise, faster decline)'
       ],
       init: (obs) => {
         const K = Math.max(Math.max(...obs) * 1.3, 10);
         return [K, 0.3, obs.length/2, 1.0];
       },
       fn: (t, [K, r, tm, a]) => {
-        const inner = 1 + Math.exp(-r*(t-tm));
-        return Math.max(0, K / Math.pow(Math.max(inner,1e-10), 1/Math.max(a,0.01)));
+        const as = Math.max(a, 0.01);
+        const inner = 1 + as * Math.exp(-r * as * (t - tm));
+        return Math.max(0, K / Math.pow(Math.max(inner, 1e-10), 1 / as));
       },
       isCumulative: true,
-      definition: 'A generalization of the logistic model with asymmetry parameter a. When a=1 it reduces to logistic. Real outbreaks are almost never symmetric — the decline is typically slower than the rise — making Richards the standard choice for epidemic forecasting.',
-      assumptions: ['Unimodal epidemic','Parametric growth form','Closed population during observation'],
-      strengths: ['Flexible asymmetry','Standard in WHO/CDC forecasting','Captures fast-rise/slow-decline'],
-      limitations: ['4 parameters — needs sufficient data','Identifiability issues with sparse data','Single wave only'],
+      definition: 'A generalization of the logistic model with asymmetry parameter a (Richards 1959). When a=1 it reduces to logistic. Real outbreaks almost never have a symmetric decline — Richards is the standard single-wave model in epidemic forecasting (Chowell 2017, Viboud et al. 2016). It is a special case of the GRM with the growth scaling parameter p fixed at 1.',
+      assumptions: ['Unimodal single-wave epidemic','Power-law saturation term','Closed population during observation'],
+      strengths: ['Flexible asymmetry without assuming inflection position','Standard in WHO/CDC/academic forecasting','Closed-form solution — fast to fit','Nests logistic (a=1) as special case'],
+      limitations: ['4 parameters — needs ≥10–15 data points for reliable estimates','Identifiability issues with sparse early data','Single wave only — not suitable for multi-wave epidemics'],
     },
 
     {
       id: 'gompertz',
       name: 'Gompertz Model',
-      equationDisplay: 'C(t) = K · exp(−exp(−r(t−t_m)))',
-      deDisplay: 'dC/dt = r · C · ln(K/C)',
+      equationDisplay: 'C(t) = K · exp(−exp(−r·(t − t_m)))',
+      deDisplay: 'dC/dt = r · C · ln(K / C)',
       params: ['K','r','tm'],
-      paramNames: ['K (final size)', 'r (growth rate)', 't_m (inflection)'],
+      paramNames: ['K (final size)', 'r (growth rate)', 't_m (inflection time)'],
       paramDescriptions: [
         'Final cumulative epidemic size',
         'Growth rate parameter',
-        'Time of inflection point (always at C = K/e ≈ 0.368K)'
+        'Time of inflection point — always at C = K/e ≈ 0.368·K (earlier than logistic at K/2)'
       ],
       init: (obs) => {
         const K = Math.max(Math.max(...obs) * 1.3, 10);
@@ -99,38 +138,96 @@ const Models = (() => {
       },
       fn: (t, [K, r, tm]) => Math.max(0, K * Math.exp(-Math.exp(-r*(t-tm)))),
       isCumulative: true,
-      definition: 'An asymmetric S-shaped model where the inflection always occurs at C = K/e ≈ 0.368K — earlier than the logistic (0.5K). Produces a naturally faster initial rise and longer tail. Widely used in cancer growth, technology adoption, and epidemic modeling.',
-      assumptions: ['Single wave','Inflection fixed at K/e — less flexible than Richards'],
-      strengths: ['Natural asymmetry without extra parameter','Good for rapid-onset outbreaks','Simpler than Richards (3 vs 4 params)'],
-      limitations: ['Inflection fixed at K/e','Less flexible than Richards for symmetric curves'],
+      definition: 'An asymmetric S-shaped model where the inflection always occurs at C = K/e ≈ 0.368K — earlier than logistic (0.5K). Produces a naturally faster initial rise and longer tail, which matches many infectious disease outbreaks. Widely used in cancer growth, technology diffusion, and epidemic modeling. It has one fewer parameter than Richards but the inflection position is fixed.',
+      assumptions: ['Single wave','Inflection always fixed at K/e ≈ 0.368K — no flexibility in inflection position'],
+      strengths: ['Natural asymmetry (faster rise, slower decline) without extra parameter','Good for rapid-onset outbreaks','Simpler than Richards (3 vs 4 parameters)'],
+      limitations: ['Inflection always at K/e — cannot adapt to outbreaks with different inflection positions','Less flexible than Richards'],
+    },
+
+    {
+      id: 'grm',
+      name: 'Generalized Richards Model (GRM)',
+      // No closed form for general p — computed by numerical Euler integration of dC/dt = r·C^p·[1−(C/K)^a]
+      equationDisplay: 'No closed form — numerically integrates dC/dt below',
+      deDisplay: 'dC/dt = r · C^p · [1 − (C/K)^a]',
+      params: ['K','r','p','a'],
+      paramNames: ['K (final size)', 'r (growth rate)', 'p (scaling)', 'a (asymmetry)'],
+      paramDescriptions: [
+        'Final cumulative epidemic size',
+        'Growth rate constant',
+        'Scaling of growth: p=1 → Richards; p<1 → sub-exponential early growth; p typically 0.6–1.0 in epidemic data',
+        'Asymmetry of the epidemic curve: a=1 → symmetric (logistic-type); a≠1 → asymmetric. Together p and a allow independent control of early growth deceleration and curve asymmetry.'
+      ],
+      init: (obs) => {
+        const K = Math.max(Math.max(...obs) * 1.3, 10);
+        return [K, 0.3, 0.9, 1.0];
+      },
+      fn: (t, [K, r, p, a]) => {
+        // Euler integration from t=0 to t (step size h, adaptive if t large)
+        // C(0) = small seed (1 case)
+        const Ks = Math.max(K, 1);
+        const ps = Math.max(0.01, Math.min(p, 1.5));
+        const as = Math.max(0.01, a);
+        const steps = Math.max(200, Math.ceil(t * 20));
+        const h = t / steps;
+        if (t <= 0) return Math.max(0, 1); // seed
+        let C = 1.0; // start with 1 case
+        for (let i = 0; i < steps; i++) {
+          const dC = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - Math.pow(Math.min(C / Ks, 1 - 1e-10), as));
+          C = Math.max(C + h * Math.max(dC, 0), 1e-10);
+          if (C >= Ks) { C = Ks; break; }
+        }
+        return Math.max(0, C);
+      },
+      isCumulative: true,
+      definition: 'The GRM (Chowell 2017; Viboud et al. 2016) generalizes Richards by adding the growth scaling parameter p to the incidence term. This allows independent control of early-phase growth deceleration (via p) and epidemic curve asymmetry (via a). When p=1 it reduces to the Richards model; when p=1 and a=1 it reduces to logistic. The GRM is the most flexible single-wave phenomenological model and is the basis of the QuantDiffForecast toolbox. It nests GGM (no K, early phase only), Richards (p=1), and logistic (p=1, a=1).',
+      assumptions: ['Single epidemic wave','Power-law scaling of both incidence and saturation terms','Closed population'],
+      strengths: [
+        'Most flexible single-wave phenomenological model',
+        'Nests Richards (p=1), logistic (p=1, a=1), and GGM (no K)',
+        'Independent control of early growth deceleration (p) and curve asymmetry (a)',
+        'Basis of Chowell lab QuantDiffForecast toolbox',
+        'Captures sub-exponential growth common in spatially heterogeneous outbreaks'
+      ],
+      limitations: [
+        '4 parameters — requires sufficient data (≥15 points recommended)',
+        'No closed-form solution — numerically integrated (slower fitting)',
+        'p and a can be correlated — identifiability may be poor with sparse data',
+        'Single wave only'
+      ],
     },
 
     {
       id: 'generalized_logistic',
-      name: 'Generalized Logistic',
-      equationDisplay: 'I(t) = K·r·s·(1−s^a)/a  where s=1/(1+e^(−r(t−t_m)))',
-      deDisplay: 'Same DE as Richards — dC/dt = r·C·[1−(C/K)^a]',
+      name: 'Generalized Logistic (Incidence)',
+      // This is the incidence form — the time-derivative of the Richards cumulative model
+      // I(t) = dC/dt evaluated at t, where C(t) is the Richards cumulative
+      equationDisplay: 'I(t) = r · K · e^(−r·a·(t−t_m)) · [1 + a·e^(−r·a·(t−t_m))]^(−(1/a)−1)',
+      deDisplay: 'I(t) = dC/dt of Richards:  r · C · [1 − (C/K)^a]',
       params: ['K','r','tm','a'],
-      paramNames: ['K (final size)', 'r (growth rate)', 't_m (inflection)', 'a (shape)'],
+      paramNames: ['K (total epidemic size)', 'r (growth rate)', 't_m (peak time)', 'a (asymmetry)'],
       paramDescriptions: [
-        'Total epidemic size',
-        'Peak growth rate',
-        'Time of inflection',
-        'Shape/asymmetry parameter'
+        'Total epidemic size (area under the incidence curve)',
+        'Growth rate at peak incidence',
+        'Time of peak incidence (equals Richards inflection time t_m)',
+        'Asymmetry parameter: a=1 → symmetric bell curve (logistic incidence); a<1 → right-skewed (fast rise, slow decline); a>1 → left-skewed'
       ],
       init: (obs) => {
         const K = Math.max(obs.reduce((a,b)=>a+b,0) * 1.3, 10);
         return [K, 0.3, obs.length/2, 0.8];
       },
       fn: (t, [K, r, tm, a]) => {
-        const s = 1/(1+Math.exp(-r*(t-tm)));
-        return Math.max(0, K * r * s * (1 - Math.pow(Math.max(s,1e-10), Math.max(a,0.01))) / Math.max(a,0.01));
+        // Analytic derivative of Richards cumulative
+        const as = Math.max(a, 0.01);
+        const u = Math.exp(-r * as * (t - tm));
+        const denom = Math.pow(Math.max(1 + as * u, 1e-10), 1/as + 1);
+        return Math.max(0, r * K * u / denom);
       },
       isCumulative: false,
-      definition: 'The incidence form of the Richards model — directly models new cases per period rather than cumulative totals. Useful when you observe incidence data (new cases per week). Same flexibility as Richards with the asymmetry parameter a.',
-      assumptions: ['Single epidemic wave','Parametric incidence form'],
-      strengths: ['Directly fits incidence data','Flexible asymmetry','Widely used in short-term forecasting'],
-      limitations: ['Sensitive to noisy data','Cannot capture multiple waves'],
+      definition: 'The incidence form of the Richards model — directly fits new cases per period (incidence) rather than cumulative totals. It is the analytic time-derivative of the Richards cumulative curve, producing a flexible asymmetric bell-shaped incidence curve. Use this when your data are new cases per week/day rather than running totals.',
+      assumptions: ['Single epidemic wave','Unimodal incidence curve derived from Richards cumulative form'],
+      strengths: ['Directly fits incidence data (new cases per period)','Flexible asymmetry via parameter a','Same theoretical basis as Richards — well-studied'],
+      limitations: ['Sensitive to noisy incidence data','Cannot capture multiple waves','K here is total epidemic size (sum of all cases), not a population size'],
     }
   ];
 
@@ -140,7 +237,6 @@ const Models = (() => {
     for (let i = 0; i < obs.length; i++) {
       const mu = Math.max(pred[i], 1e-10);
       ll += obs[i] * Math.log(mu) - mu;
-      // subtract log(obs[i]!) — constant, omit for optimization
     }
     return ll;
   }
@@ -200,7 +296,7 @@ const Models = (() => {
     }
   };
 
-  /* ── Loss function wrappers (called from phenomenological.html) ── */
+  /* ── Loss function wrappers ── */
   function sseLoss(modelFn, t, obs) {
     return params => {
       try {
