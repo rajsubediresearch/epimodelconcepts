@@ -327,8 +327,8 @@ function runFit(){
   const split=getSplit();
   const{trainObs,testObs,hasTest,horizon,start,end,testStart,testEnd,allObs}=split;
   if(trainObs.length<4){document.getElementById('fitStatus').textContent='Need at least 4 training points.';return;}
-  if(model.twoWave&&trainObs.length<20){document.getElementById('fitStatus').textContent='⚠ Two-Wave Richards needs at least 20 training points with both waves visible. Add more data or switch to a single-wave model.';document.getElementById('fitBtn').disabled=false;document.getElementById('compareBtn').disabled=false;return;}
   const model=Models.phenomenological.find(m=>m.id===currentModel);if(!model)return;
+  if(model.twoWave&&trainObs.length<20){document.getElementById('fitStatus').textContent='⚠ Two-Wave Richards needs at least 20 training points with both waves visible. Add more data or switch to a single-wave model.';document.getElementById('fitBtn').disabled=false;document.getElementById('compareBtn').disabled=false;return;}
   document.getElementById('fitBtn').disabled=true;
   document.getElementById('compareBtn').disabled=true;
   document.getElementById('fitStatus').textContent='Fitting…';
