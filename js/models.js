@@ -147,40 +147,43 @@ const Models = (() => {
     {
       id: 'grm',
       name: 'Generalized Richards Model (GRM)',
-      // No closed form for general p — computed by numerical Euler integration of dC/dt = r·C^p·[1−(C/K)^a]
-      equationDisplay: 'No closed form — numerically integrates dC/dt below',
+      // No closed form — numerically integrates dC/dt = r·C^p·[1−(C/K)^a]
+      // and returns the incidence I(t) = dC/dt at time t
+      equationDisplay: 'I(t) = dC/dt|_t = r · C(t)^p · [1 − (C(t)/K)^a]',
       deDisplay: 'dC/dt = r · C^p · [1 − (C/K)^a]',
       params: ['K','r','p','a'],
       paramNames: ['K (final size)', 'r (growth rate)', 'p (scaling)', 'a (asymmetry)'],
       paramDescriptions: [
-        'Final cumulative epidemic size',
+        'Final cumulative epidemic size (carrying capacity)',
         'Growth rate constant',
         'Scaling of growth: p=1 → Richards; p<1 → sub-exponential early growth; p typically 0.6–1.0 in epidemic data',
-        'Asymmetry of the epidemic curve: a=1 → symmetric (logistic-type); a≠1 → asymmetric. Together p and a allow independent control of early growth deceleration and curve asymmetry.'
+        'Asymmetry of the epidemic curve: a=1 → symmetric (logistic-type); a>1 → faster rise/slower decline. Together p and a allow independent control of early growth deceleration and curve asymmetry.'
       ],
       init: (obs) => {
-        const K = Math.max(Math.max(...obs) * 1.3, 10);
-        return [K, 0.3, 0.9, 1.0];
+        // K is total epidemic size — for incidence data, sum approximates it
+        const K = Math.max(obs.reduce((a,b)=>a+b,0) * 1.3, 10);
+        return [K, 0.5, 0.9, 1.0];
       },
       fn: (t, [K, r, p, a]) => {
-        // Euler integration from t=0 to t (step size h, adaptive if t large)
-        // C(0) = small seed (1 case)
+        // Integrate dC/dt = r·C^p·[1−(C/K)^a] from 0 to t, return incidence at t
         const Ks = Math.max(K, 1);
         const ps = Math.max(0.01, Math.min(p, 1.5));
         const as = Math.max(0.01, a);
         const steps = Math.max(200, Math.ceil(t * 20));
         const h = t / steps;
-        if (t <= 0) return Math.max(0, 1); // seed
-        let C = 1.0; // start with 1 case
+        if (t <= 0) return Math.max(0, r); // incidence at t=0 ≈ r·1^p·[1−(1/K)^a] ≈ r
+        let C = 1.0;
         for (let i = 0; i < steps; i++) {
           const dC = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - Math.pow(Math.min(C / Ks, 1 - 1e-10), as));
           C = Math.max(C + h * Math.max(dC, 0), 1e-10);
           if (C >= Ks) { C = Ks; break; }
         }
-        return Math.max(0, C);
+        // Return incidence (dC/dt) at current C
+        const dCdt = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - Math.pow(Math.min(C / Ks, 1 - 1e-10), as));
+        return Math.max(0, dCdt);
       },
-      isCumulative: true,
-      definition: 'The GRM (Chowell 2017; Viboud et al. 2016) generalizes Richards by adding the growth scaling parameter p to the incidence term. This allows independent control of early-phase growth deceleration (via p) and epidemic curve asymmetry (via a). When p=1 it reduces to the Richards model; when p=1 and a=1 it reduces to logistic. The GRM is the most flexible single-wave phenomenological model and is the basis of the QuantDiffForecast toolbox. It nests GGM (no K, early phase only), Richards (p=1), and logistic (p=1, a=1).',
+      isCumulative: false,
+      definition: 'The GRM (Chowell 2017; Viboud et al. 2016) generalizes Richards by adding the growth scaling parameter p to the incidence term. It numerically integrates the cumulative trajectory C(t) and outputs incidence I(t) = dC/dt — making it directly comparable to the QuantDiffForecast MATLAB toolbox. When p=1 it reduces to Richards incidence; when p=1 and a=1 it reduces to logistic incidence. The GRM is the most flexible single-wave phenomenological model for incidence data.',
       assumptions: ['Single epidemic wave','Power-law scaling of both incidence and saturation terms','Closed population'],
       strengths: [
         'Most flexible single-wave phenomenological model',
