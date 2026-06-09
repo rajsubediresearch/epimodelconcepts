@@ -108,7 +108,7 @@
       <span style="font-size:12px;color:var(--text-tertiary)">Set to 0 to skip</span>
     </div>
     <div class="info-box" style="font-size:12px;margin-top:4px">
-      Bootstrap runs automatically after fitting. 300 iterations recommended (~3–5s). Set to 0 to get point estimates only. Higher = more reliable CIs. <strong>Note:</strong> GRM uses numerical integration and is slower to fit — consider 100–200 bootstrap iterations for GRM.
+      Bootstrap runs automatically after fitting. 300 iterations recommended (~3–5s). Set to 0 to get point estimates only. Higher = more reliable CIs. <strong>Note:</strong> GRM (numerical integration) and Two-Wave Richards (8 parameters) are slower to fit — consider 100–150 bootstrap iterations for those models.
     </div>
 
     <div style="margin-top:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -305,14 +305,18 @@ function showModelDef(id){
 }
 
 function getLossFn(model,t,obs){
-  if(currentLoss==='poisson')return Models.poissonLoss(model.fn,t,obs);
-  if(currentLoss==='nb')return Models.nbLoss(model.fn,t,obs,2);
-  return Models.sseLoss(model.fn,t,obs);
+  const constraint=model.lossConstraint||null;
+  const wrap=(baseFn)=>constraint
+    ?(params=>constraint(params)?baseFn(params):1e15)
+    :baseFn;
+  if(currentLoss==='poisson')return wrap(Models.poissonLoss(model.fn,t,obs));
+  if(currentLoss==='nb')return wrap(Models.nbLoss(model.fn,t,obs,2));
+  return wrap(Models.sseLoss(model.fn,t,obs));
 }
 function getLossFnBuilder(){
-  if(currentLoss==='poisson')return(fn,t,obs)=>Models.poissonLoss(fn,t,obs);
-  if(currentLoss==='nb')return(fn,t,obs,th)=>Models.nbLoss(fn,t,obs,th||2);
-  return(fn,t,obs)=>Models.sseLoss(fn,t,obs);
+  if(currentLoss==='poisson')return(fn,t,obs,_,constraint)=>{const b=Models.poissonLoss(fn,t,obs);return constraint?(p=>constraint(p)?b(p):1e15):b;};
+  if(currentLoss==='nb')return(fn,t,obs,th,constraint)=>{const b=Models.nbLoss(fn,t,obs,th||2);return constraint?(p=>constraint(p)?b(p):1e15):b;};
+  return(fn,t,obs,_,constraint)=>{const b=Models.sseLoss(fn,t,obs);return constraint?(p=>constraint(p)?b(p):1e15):b;};
 }
 
 function runFit(){
@@ -327,6 +331,19 @@ function runFit(){
   setTimeout(()=>{
     try{
       const t=trainObs.map((_,i)=>i);
+
+      // Two-wave guard: warn if second wave not detectable in training data
+      if(model.twoWave){
+        const n=trainObs.length;
+        const p1=trainObs.indexOf(Math.max(...trainObs.slice(0,Math.floor(n*0.6))));
+        let tr=p1;
+        for(let i=p1+1;i<n-2;i++){if(trainObs[i]<trainObs[tr])tr=i;else if(trainObs[i]>trainObs[tr]*1.1)break;}
+        const wave2Signal=trainObs.slice(tr).some((v,i,a)=>i>2&&v>a[0]*1.2);
+        if(!wave2Signal){
+          document.getElementById('fitStatus').textContent='⚠ Warning: second wave not detectable in training window — two-wave fit unreliable.';
+        }
+      }
+
       const lf=getLossFn(model,t,trainObs);
       const res=Optimizer.fitModel(lf,model.init(trainObs),{maxIter:8000,tol:1e-12});
       const trainPred=t.map(ti=>Math.max(0,model.fn(ti,res.params)));
@@ -367,12 +384,14 @@ function runFit(){
 
 function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
   setTimeout(()=>{
+    const constraint=model.lossConstraint||null;
     const bootResult=Optimizer.bootstrap(
       model.fn,getLossFnBuilder(),t,obs,params,nBoot,currentLoss,2,
       (p)=>{
         document.getElementById('progressBar').style.width=(p*100)+'%';
         document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot} iterations…`;
-      }
+      },
+      constraint
     );
     document.getElementById('progressBar').style.width='100%';
     if(bootResult){
@@ -549,9 +568,10 @@ function showResults(ctx,bootResult=null){
             exponential:'Exponential growth cannot capture deceleration — it will always overpredict once the epidemic slows. Try GGM (adds sub-exponential scaling), Logistic, or Richards.',
             ggm:'GGM has no carrying capacity — it will always overpredict once the epidemic peaks or decelerates toward saturation. Try Logistic, Richards, or GRM if you have data past the inflection.',
             logistic:'Logistic assumes a symmetric curve (inflection always at K/2). If the epidemic declines faster or slower than it rose, try Richards or GRM — both add asymmetry.',
-            richards:'Richards is flexible but p is fixed at 1. If early-phase sub-exponential growth is suspected, try GRM (adds the scaling parameter p). Also check whether this is a multi-wave epidemic.',
+            richards:'Richards is flexible but p is fixed at 1. If early-phase sub-exponential growth is suspected, try GRM. If you see a second wave in your data, try Two-Wave Richards.',
             gompertz:'Gompertz has a fixed inflection at K/e ≈ 0.368K which may not match this trajectory. Try Richards (flexible inflection) or GRM (also controls early growth scaling).',
-            grm:'GRM is the most flexible single-wave model here. If bias is still high, consider whether this is a multi-wave epidemic, shorten the training window, or check that p and a are identifiable with your data length.',
+            grm:'GRM is the most flexible single-wave model here. If bias is still high, consider whether this is a multi-wave epidemic — if so, try Two-Wave Richards.',
+            two_wave:'Two-Wave Richards overpredicts the decline when the second wave has not yet peaked in the training window. Shorten the forecast horizon, or wait until more post-peak data is available. If only one wave is present, switch to a single-wave model.',
             generalized_logistic:'Try shortening the training window or switching to Richards cumulative form — the generalized logistic (incidence form) may be fitting noise near the peak.'
           };
           return suggestions[currentModel]||'Try a more flexible model or shorten the training window.';

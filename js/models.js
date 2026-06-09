@@ -228,6 +228,98 @@ const Models = (() => {
       assumptions: ['Single epidemic wave','Unimodal incidence curve derived from Richards cumulative form'],
       strengths: ['Directly fits incidence data (new cases per period)','Flexible asymmetry via parameter a','Same theoretical basis as Richards — well-studied'],
       limitations: ['Sensitive to noisy incidence data','Cannot capture multiple waves','K here is total epidemic size (sum of all cases), not a population size'],
+    },
+
+    {
+      id: 'two_wave',
+      name: 'Two-Wave Richards',
+      // Sum of two Richards-incidence (Generalized Logistic) curves
+      // I(t) = I₁(t; K₁,r₁,tm₁,a₁) + I₂(t; K₂,r₂,tm₂,a₂)
+      // where each Iₖ(t) = rₖ · Kₖ · uₖ / (1 + aₖ·uₖ)^(1/aₖ + 1),  uₖ = exp(−rₖ·aₖ·(t−tmₖ))
+      equationDisplay: 'I(t) = I₁(t; K₁,r₁,t_m1,a₁) + I₂(t; K₂,r₂,t_m2,a₂)',
+      deDisplay: 'Each wave: dC_k/dt = r_k · C_k · [1 − (C_k/K_k)^(a_k)]   (Richards incidence, k = 1,2)',
+      params: ['K1','r1','tm1','a1','K2','r2','tm2','a2'],
+      paramNames: [
+        'K₁ (wave 1 size)', 'r₁ (wave 1 rate)', 't_m1 (wave 1 peak)', 'a₁ (wave 1 shape)',
+        'K₂ (wave 2 size)', 'r₂ (wave 2 rate)', 't_m2 (wave 2 peak)', 'a₂ (wave 2 shape)'
+      ],
+      paramDescriptions: [
+        'Total incidence contributed by wave 1 (area under first bell curve)',
+        'Growth rate at wave 1 peak',
+        'Time of wave 1 peak incidence',
+        'Asymmetry of wave 1: a=1 → symmetric; a<1 → fast rise/slow decline',
+        'Total incidence contributed by wave 2 (area under second bell curve)',
+        'Growth rate at wave 2 peak',
+        'Time of wave 2 peak incidence (must be > t_m1)',
+        'Asymmetry of wave 2: a=1 → symmetric; a<1 → fast rise/slow decline'
+      ],
+      // Smart init: auto-detect two peaks and trough from data
+      init: (obs) => {
+        const n = obs.length;
+        // Find first peak in the first 60% of the series
+        const searchEnd1 = Math.max(4, Math.floor(n * 0.6));
+        let peak1Idx = 0;
+        for (let i = 1; i < searchEnd1; i++) if (obs[i] > obs[peak1Idx]) peak1Idx = i;
+
+        // Find trough after first peak (stop when values start rising again by >10%)
+        let troughIdx = peak1Idx;
+        for (let i = peak1Idx + 1; i < n - 2; i++) {
+          if (obs[i] < obs[troughIdx]) troughIdx = i;
+          else if (obs[i] > obs[troughIdx] * 1.1) break;
+        }
+
+        // Find second peak after trough
+        let peak2Idx = troughIdx;
+        for (let i = troughIdx + 1; i < n; i++) if (obs[i] > obs[peak2Idx]) peak2Idx = i;
+
+        // Ensure minimum separation between peaks
+        if (peak2Idx <= peak1Idx + 3) peak2Idx = Math.min(n - 1, peak1Idx + Math.max(5, Math.floor(n * 0.3)));
+
+        // Estimate K from approximate area under each wave
+        const K1 = Math.max(obs.slice(0, troughIdx + 1).reduce((a,b) => a+b, 0) * 1.2, 10);
+        const K2 = Math.max(obs.slice(troughIdx).reduce((a,b) => a+b, 0) * 1.2, 10);
+
+        return [K1, 0.4, peak1Idx, 0.8,  K2, 0.3, peak2Idx, 1.0];
+      },
+      fn: (t, [K1, r1, tm1, a1, K2, r2, tm2, a2]) => {
+        function waveI(t, K, r, tm, a) {
+          const as = Math.max(a, 0.01);
+          const u  = Math.exp(-r * as * (t - tm));
+          const d  = Math.pow(Math.max(1 + as * u, 1e-10), 1/as + 1);
+          return Math.max(0, r * K * u / d);
+        }
+        return Math.max(0, waveI(t, K1, r1, tm1, a1) + waveI(t, K2, r2, tm2, a2));
+      },
+      // Override loss to enforce tm2 > tm1 + minimum gap (prevents wave collapse)
+      lossConstraint: (params) => {
+        const [K1,r1,tm1,a1,K2,r2,tm2,a2] = params;
+        if (K1 <= 0 || K2 <= 0 || r1 <= 0 || r2 <= 0 || a1 <= 0 || a2 <= 0) return false;
+        if (tm2 <= tm1 + 3) return false;
+        return true;
+      },
+      isCumulative: false,
+      twoWave: true,
+      definition: 'Models two-wave epidemics as the sum of two independent Richards incidence curves. Each wave has its own size (K), growth rate (r), peak time (t_m), and asymmetry (a), giving 8 parameters in total. Designed for incidence data with a visible inter-wave trough. Requires both waves to be at least partially visible in the training data — if the second wave has not yet begun, its parameters are unidentifiable and forecasts will be unreliable.',
+      assumptions: [
+        'Two distinct waves with a detectable trough between them',
+        'Each wave is independently shaped (no mechanistic interaction between waves)',
+        'Both waves must be at least partially observed in training data',
+        'Incidence data (new cases per period), not cumulative'
+      ],
+      strengths: [
+        'Captures two-wave epidemic dynamics that all single-wave models fail on',
+        'Analytic closed form — fast to fit despite 8 parameters',
+        'Each wave independently parameterized — interpretable',
+        'ΔAIC vs single-wave is typically >100 for genuine two-wave data',
+        'Good short-horizon forecasting once both waves are partly observed'
+      ],
+      limitations: [
+        '8 parameters — requires ≥20 data points with both waves at least partially visible',
+        'Fails silently if second wave is absent from training data (wave 2 params unidentifiable)',
+        'Assumes only two waves — does not extend to three or more',
+        'Bootstrap slower than single-wave models — recommend 100–150 iterations',
+        'Incidence only — no cumulative form'
+      ],
     }
   ];
 
