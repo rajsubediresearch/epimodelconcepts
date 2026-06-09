@@ -148,63 +148,78 @@ const Optimizer = (() => {
   }
 
   /* ── Bootstrap (called from phenomenological.html) ── */
+  // Returns a Promise — resolves with bootResult or null.
+  // Processes iterations in chunks of CHUNK_SIZE, yielding to the browser
+  // between chunks so the UI stays responsive and "page not responding" never fires.
   function bootstrap(modelFn, lossFnBuilder, t, obs, baseParams, nBoot=300, lossType='sse', theta=2, progressCb=null, constraint=null, isCumulative=false) {
-    try {
-      const basePred = t.map(ti => modelFn(ti, baseParams));
-      const residuals = obs.map((o,i) => o - basePred[i]);
-      const lastObs = obs[obs.length-1];
-      const bootParamSets = [];
+    const CHUNK_SIZE = 10; // iterations per chunk — small enough to stay <100ms per chunk
+    return new Promise((resolve) => {
+      try {
+        const basePred  = t.map(ti => modelFn(ti, baseParams));
+        const residuals = obs.map((o,i) => o - basePred[i]);
+        const lastObs   = obs[obs.length-1];
+        const bootParamSets = [];
+        let b = 0;
 
-      for (let b = 0; b < nBoot; b++) {
-        let bootObs = basePred.map(p => {
-          const r = residuals[Math.floor(Math.random()*obs.length)];
-          return Math.max(0, p + r);
-        });
-        // For cumulative data: enforce monotonicity on bootstrap observations
-        // so the refitted model isn't chasing a physically impossible series
-        if (isCumulative) {
-          for (let i = 1; i < bootObs.length; i++) {
-            if (bootObs[i] < bootObs[i-1]) bootObs[i] = bootObs[i-1];
+        function runChunk() {
+          const end = Math.min(b + CHUNK_SIZE, nBoot);
+          while (b < end) {
+            let bootObs = basePred.map(p => {
+              const r = residuals[Math.floor(Math.random()*obs.length)];
+              return Math.max(0, p + r);
+            });
+            if (isCumulative) {
+              for (let i = 1; i < bootObs.length; i++) {
+                if (bootObs[i] < bootObs[i-1]) bootObs[i] = bootObs[i-1];
+              }
+            }
+            const lf = constraint
+              ? (params => constraint(params) ? lossFnBuilder(modelFn, t, bootObs, theta)(params) : 1e15)
+              : lossFnBuilder(modelFn, t, bootObs, theta);
+            try {
+              const res = nelderMead(lf, baseParams.slice(), {maxIter:2000, tol:1e-8});
+              bootParamSets.push(res.params);
+            } catch(e) {}
+            b++;
+          }
+          if (progressCb) progressCb(b / nBoot);
+
+          if (b < nBoot) {
+            // Yield to browser, then continue
+            setTimeout(runChunk, 0);
+          } else {
+            // All done — compute CIs and resolve
+            if (bootParamSets.length < 10) { resolve(null); return; }
+
+            const paramCI = baseParams.map((_, j) => {
+              const vals = bootParamSets.map(p=>p[j]).filter(isFinite).sort((a,b)=>a-b);
+              return {
+                lo: vals[Math.floor(0.025*vals.length)]||0,
+                hi: vals[Math.floor(0.975*vals.length)]||0,
+                samples: vals
+              };
+            });
+
+            let runningLo = 0;
+            const predCI = t.map((ti) => {
+              const vals = bootParamSets.map(bp=>modelFn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
+              let lo = Math.max(0, vals[Math.floor(0.025*vals.length)]||0);
+              let hi = Math.max(lo, vals[Math.floor(0.975*vals.length)]||0);
+              if (isCumulative) {
+                lo = Math.max(lo, runningLo);
+                hi = Math.max(hi, lo);
+                runningLo = lo;
+              }
+              return { lo, hi };
+            });
+
+            resolve({ paramCI, predCI, nBoot: bootParamSets.length, bootParams: bootParamSets, isCumulative, lastObs });
           }
         }
-        const lf = constraint
-          ? (params => constraint(params) ? lossFnBuilder(modelFn, t, bootObs, theta)(params) : 1e15)
-          : lossFnBuilder(modelFn, t, bootObs, theta);
-        try {
-          const res = nelderMead(lf, baseParams.slice(), {maxIter:2000, tol:1e-8});
-          bootParamSets.push(res.params);
-        } catch(e) {}
-        if (progressCb && b % 10 === 0) progressCb(b/nBoot);
-      }
 
-      if (bootParamSets.length < 10) return null;
-
-      const paramCI = baseParams.map((_, j) => {
-        const vals = bootParamSets.map(p=>p[j]).filter(isFinite).sort((a,b)=>a-b);
-        return {
-          lo: vals[Math.floor(0.025*vals.length)]||0,
-          hi: vals[Math.floor(0.975*vals.length)]||0,
-          samples: vals
-        };
-      });
-
-      // predCI: training window CI — for cumulative models enforce monotonicity
-      // across time so the band never decreases as t increases
-      let runningLo = 0;
-      const predCI = t.map((ti, i) => {
-        const vals = bootParamSets.map(bp=>modelFn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
-        let lo = Math.max(0, vals[Math.floor(0.025*vals.length)]||0);
-        let hi = Math.max(lo, vals[Math.floor(0.975*vals.length)]||0);
-        if (isCumulative) {
-          lo = Math.max(lo, runningLo);
-          hi = Math.max(hi, lo);
-          runningLo = lo;
-        }
-        return { lo, hi };
-      });
-
-      return { paramCI, predCI, nBoot: bootParamSets.length, bootParams: bootParamSets, isCumulative, lastObs };
-    } catch(e) { return null; }
+        setTimeout(runChunk, 0);
+      } catch(e) { resolve(null); }
+    });
   }
   function forecast(modelFn, params, t, horizon, bootResult=null) {
     const lastT = t[t.length-1];

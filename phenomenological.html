@@ -398,18 +398,17 @@ function runFit(){
   },10);
 }
 
-function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
-  setTimeout(()=>{
-    const constraint=model.lossConstraint||null;
-    const bootResult=Optimizer.bootstrap(
-      model.fn,getLossFnBuilder(),t,obs,params,nBoot,currentLoss,2,
-      (p)=>{
-        document.getElementById('progressBar').style.width=(p*100)+'%';
-        document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot} iterations…`;
-      },
-      constraint,
-      model.isCumulative===true
-    );
+async function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
+  const constraint=model.lossConstraint||null;
+  const bootResult=await Optimizer.bootstrap(
+    model.fn,getLossFnBuilder(),t,obs,params,nBoot,currentLoss,2,
+    (p)=>{
+      document.getElementById('progressBar').style.width=(p*100)+'%';
+      document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot} iterations…`;
+    },
+    constraint,
+    model.isCumulative===true
+  );
     document.getElementById('progressBar').style.width='100%';
     if(bootResult){
       document.getElementById('fitStatus').textContent=`Fitted ✓ with ${bootResult.nBoot}-iteration bootstrap CIs`;
@@ -444,7 +443,6 @@ function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
     }
     showModelDef(model.id);
     onDone();
-  },20);
 }
 
 function showBootstrapPanel(model,params,bootResult){
