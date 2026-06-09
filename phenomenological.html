@@ -289,6 +289,9 @@ function showModelDef(id){
   const m=Models.phenomenological.find(x=>x.id===id);if(!m)return;
   document.getElementById('modelDefCard').style.display='block';
   document.getElementById('modelDefLabel').textContent=m.name+' model';
+  const twoWaveWarning=m.twoWave
+    ?`<div class="warn-box" style="margin-top:0.75rem">⚠ <strong>Two-wave model — read before fitting:</strong> Requires both waves to be at least partially visible in the training window. If the second wave has not yet begun, its parameters are unidentifiable and forecasts will be unreliable. Minimum recommended training length: 20 data points. Bootstrap is slower with 8 parameters — consider 100–150 iterations.</div>`
+    :'';
   document.getElementById('modelDefContent').innerHTML=`<div class="concept-box">
     <div class="cb-definition"><strong>Definition</strong>${m.definition}</div>
     <div class="cb-interpretation"><strong>Equations</strong>
@@ -297,6 +300,7 @@ function showModelDef(id){
     </div>
     <div class="cb-sowhat">${m.strengths.map(s=>'✓ '+s).join(' · ')}</div>
   </div>
+  ${twoWaveWarning}
   <table class="param-table" style="margin-top:0.75rem">
     <thead><tr><th>Parameter</th><th>Symbol</th><th>Description</th></tr></thead>
     <tbody>${m.params.map((p,i)=>`<tr><td class="p-name">${m.paramNames[i]}</td><td>${p}</td><td class="p-desc">${m.paramDescriptions[i]}</td></tr>`).join('')}</tbody>
@@ -323,6 +327,7 @@ function runFit(){
   const split=getSplit();
   const{trainObs,testObs,hasTest,horizon,start,end,testStart,testEnd,allObs}=split;
   if(trainObs.length<4){document.getElementById('fitStatus').textContent='Need at least 4 training points.';return;}
+  if(model.twoWave&&trainObs.length<20){document.getElementById('fitStatus').textContent='⚠ Two-Wave Richards needs at least 20 training points with both waves visible. Add more data or switch to a single-wave model.';document.getElementById('fitBtn').disabled=false;document.getElementById('compareBtn').disabled=false;return;}
   const model=Models.phenomenological.find(m=>m.id===currentModel);if(!model)return;
   document.getElementById('fitBtn').disabled=true;
   document.getElementById('compareBtn').disabled=true;
@@ -391,7 +396,8 @@ function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
         document.getElementById('progressBar').style.width=(p*100)+'%';
         document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot} iterations…`;
       },
-      constraint
+      constraint,
+      model.isCumulative===true
     );
     document.getElementById('progressBar').style.width='100%';
     if(bootResult){

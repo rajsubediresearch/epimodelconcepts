@@ -148,16 +148,11 @@ const Optimizer = (() => {
   }
 
   /* ── Bootstrap (called from phenomenological.html) ── */
-  function bootstrap(modelFn, lossFnBuilder, t, obs, baseParams, nBoot=300, lossType='sse', theta=2, progressCb=null, constraint=null) {
+  function bootstrap(modelFn, lossFnBuilder, t, obs, baseParams, nBoot=300, lossType='sse', theta=2, progressCb=null, constraint=null, isCumulative=false) {
     try {
       const basePred = t.map(ti => modelFn(ti, baseParams));
       const residuals = obs.map((o,i) => o - basePred[i]);
-
-      // Detect if this looks like cumulative data (monotone non-decreasing)
-      const isCumulative = obs.every((v,i) => i===0 || v >= obs[i-1] * 0.98);
-      // Last observed value — forecast CI lower bound can never go below this
       const lastObs = obs[obs.length-1];
-
       const bootParamSets = [];
 
       for (let b = 0; b < nBoot; b++) {
