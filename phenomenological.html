@@ -398,15 +398,25 @@ function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
       document.getElementById('fitStatus').textContent=`Fitted ✓ with ${bootResult.nBoot}-iteration bootstrap CIs`;
       // attach forecast CIs from bootstrap
       if(ctx.horizon>0&&bootResult.bootParams){
+        // For cumulative models the lower CI bound can never fall below the last
+        // observed value — cumulative counts are monotonically non-decreasing.
+        const cumulFloor=model.isCumulative
+          ? Math.max(0, ctx.trainObs[ctx.trainObs.length-1])
+          : 0;
         bootResult.forecastCI=Array.from({length:ctx.testObs.length},(_,i)=>{
           const ti=t.length+i;
           const vals=bootResult.bootParams.map(bp=>model.fn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
-          return{lo:Math.max(0,vals[Math.floor(0.025*vals.length)]||0),hi:vals[Math.floor(0.975*vals.length)]||0};
+          const lo=Math.max(cumulFloor, vals[Math.floor(0.025*vals.length)]||0);
+          const hi=Math.max(lo, vals[Math.floor(0.975*vals.length)]||0);
+          return{lo, hi};
         });
         // full forecast PI (training + forecast horizon)
-        bootResult.fullForecastCI=ctx.forecastT.map(ti=>{
+        bootResult.fullForecastCI=ctx.forecastT.map((ti,i)=>{
           const vals=bootResult.bootParams.map(bp=>model.fn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
-          return{lo:Math.max(0,vals[Math.floor(0.025*vals.length)]||0),hi:vals[Math.floor(0.975*vals.length)]||0};
+          // floor rises with each forecast step for cumulative: use previous hi as minimum anchor
+          const lo=Math.max(cumulFloor, vals[Math.floor(0.025*vals.length)]||0);
+          const hi=Math.max(lo, vals[Math.floor(0.975*vals.length)]||0);
+          return{lo, hi};
         });
       }
       showResults(ctx,bootResult);
