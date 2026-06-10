@@ -195,7 +195,13 @@ const Optimizer = (() => {
               : lossFnBuilder(modelFn, t, bootObs, theta);
             try {
               const res = nelderMead(lf, baseParams.slice(), {maxIter:2000, tol:1e-8});
-              bootParamSets.push(res.params);
+              // Only accept params that satisfy the constraint (if any)
+              // This prevents bootstrap resamples from wandering outside
+              // the physically valid parameter space (e.g. p>1, negative I0)
+              const valid = !constraint || constraint(res.params);
+              if (valid && res.params.every(isFinite)) {
+                bootParamSets.push(res.params);
+              }
             } catch(e) {}
             b++;
           }
