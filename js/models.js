@@ -159,7 +159,7 @@ const Models = (() => {
       ],
       init: (obs) => {
         const K = Math.max(obs.reduce((a,b)=>a+b,0) * 1.3, 10);
-        return [K, 0.5, 0.9, 1.0];
+        return [K, 0.5, 0.9, 1.0]; // defaults matching MATLAB/R toolboxes
       },
       // I0 is NOT a free parameter — fixed to obs[0] matching MATLAB fixI0=1.
       // The calling context (runFit / bootstrap) binds fn with the correct I0
@@ -178,20 +178,24 @@ const Models = (() => {
         const Ks = Math.max(K, 1);
         const ps = Math.max(0.01, Math.min(p, 1.0));
         const as = Math.max(0.01, a);
-        if (t <= 0) {
-          return Math.max(0, r * Math.pow(C0, ps) * (1 - Math.pow(Math.min(C0/Ks, 1-1e-10), as)));
+        function deriv(C) {
+          const sat = Math.pow(Math.min(C / Ks, 1 - 1e-10), as);
+          return r * Math.pow(Math.max(C, 1e-10), ps) * (1 - sat);
         }
-        const steps = Math.max(200, Math.ceil(t * 20));
+        if (t <= 0) return Math.max(0, deriv(C0));
+        // RK4 integration — matches deSolve lsoda accuracy far better than Euler
+        const steps = Math.max(400, Math.ceil(t * 40));
         const h = t / steps;
         let C = C0;
         for (let i = 0; i < steps; i++) {
-          const sat = Math.pow(Math.min(C / Ks, 1 - 1e-10), as);
-          const dC  = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - sat);
-          C = Math.max(C + h * Math.max(dC, 0), 1e-10);
+          const k1 = deriv(C);
+          const k2 = deriv(Math.max(C + h*k1/2, 1e-10));
+          const k3 = deriv(Math.max(C + h*k2/2, 1e-10));
+          const k4 = deriv(Math.max(C + h*k3,   1e-10));
+          C = Math.max(C + h*(k1 + 2*k2 + 2*k3 + k4)/6, 1e-10);
           if (C >= Ks) { C = Ks; break; }
         }
-        const sat = Math.pow(Math.min(C / Ks, 1 - 1e-10), as);
-        return Math.max(0, r * Math.pow(Math.max(C, 1e-10), ps) * (1 - sat));
+        return Math.max(0, deriv(C));
       },
       isCumulative: false,
       definition: 'The GRM (Chowell 2017; Viboud et al. 2016) generalizes Richards by adding the growth scaling parameter p to the incidence term. It numerically integrates the cumulative trajectory C(t) and outputs incidence I(t) = dC/dt — making it directly comparable to the QuantDiffForecast MATLAB toolbox. When p=1 it reduces to Richards incidence; when p=1 and a=1 it reduces to logistic incidence. The GRM is the most flexible single-wave phenomenological model for incidence data.',

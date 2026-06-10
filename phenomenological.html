@@ -111,6 +111,31 @@
       Bootstrap runs automatically after fitting. 300 iterations recommended (~3–5s). Set to 0 to get point estimates only. Higher = more reliable CIs. <strong>Note:</strong> GRM (numerical integration) and Two-Wave Richards (8 parameters) are slower to fit — consider 100–150 bootstrap iterations for those models.
     </div>
 
+    <!-- GRM initial parameter values — shown only when GRM selected -->
+    <div id="grmInitPanel" style="display:none;margin-top:0.75rem;padding:0.75rem;background:var(--bg-secondary);border-radius:var(--border-radius-md);border:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em">GRM — Initial parameter values</div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:10px">GRM has correlated parameters — provide informed starting values to guide the optimizer to the correct solution. Defaults match the QuantDiffForecast / ODEcast toolboxes.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="field-row" style="margin:0">
+          <label style="font-size:12px">r₀ (growth rate)</label>
+          <input type="number" id="grm_r0" value="0.5" min="0.001" max="10" step="0.05" style="width:80px">
+        </div>
+        <div class="field-row" style="margin:0">
+          <label style="font-size:12px">p₀ (scaling)</label>
+          <input type="number" id="grm_p0" value="0.9" min="0.01" max="1" step="0.05" style="width:80px">
+        </div>
+        <div class="field-row" style="margin:0">
+          <label style="font-size:12px">K₀ (final size)</label>
+          <input type="number" id="grm_K0" value="" placeholder="auto" min="1" step="100" style="width:80px">
+        </div>
+        <div class="field-row" style="margin:0">
+          <label style="font-size:12px">a₀ (asymmetry)</label>
+          <input type="number" id="grm_a0" value="1.0" min="0.001" max="10" step="0.1" style="width:80px">
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px">Leave K₀ blank to use auto (1.3 × sum of training data). Bounds: r∈(0,10], p∈(0,1], a∈(0,10], K∈[1,∞).</div>
+    </div>
+
     <div style="margin-top:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn-primary" id="fitBtn" onclick="runFit()">Fit model</button>
       <button class="btn-primary" id="compareBtn" onclick="fitAllModels()" style="background:var(--bg-secondary);color:var(--accent);border:0.5px solid var(--accent)">Compare all models</button>
@@ -287,6 +312,16 @@ function loadDataset(key,btn){
 
 function showModelDef(id){
   const m=Models.phenomenological.find(x=>x.id===id);if(!m)return;
+  // Show/hide GRM init panel
+  document.getElementById('grmInitPanel').style.display = id==='grm' ? 'block' : 'none';
+  // Auto-set K0 placeholder from current data when GRM selected
+  if(id==='grm'){
+    const split=getSplit();
+    const firstNZ=split.trainObs?split.trainObs.findIndex(v=>v>0):-1;
+    const fitObs=firstNZ>0?split.trainObs.slice(firstNZ):split.trainObs;
+    const autoK=fitObs&&fitObs.length?Math.round(fitObs.reduce((a,b)=>a+b,0)*1.3):0;
+    if(autoK>0) document.getElementById('grm_K0').placeholder='auto ('+autoK.toLocaleString()+')';
+  }
   document.getElementById('modelDefCard').style.display='block';
   document.getElementById('modelDefLabel').textContent=m.name+' model';
   const twoWaveWarning=m.twoWave
@@ -358,29 +393,29 @@ function runFit(){
       // For GRM: fix I0 to first observation (matching MATLAB fixI0=1).
       // Wrap model.fn in a closure so the optimizer never sees I0 as a parameter.
       const activeModel = model.id === 'grm'
-        ? { ...model,
-            _I0: Math.max(fitObs[0], 1),
-            fn: (t, params) => {
-              const I0 = Math.max(fitObs[0], 1);
+        ? (() => {
+            // Read user-supplied init values — fall back to auto if blank
+            const r0 = parseFloat(document.getElementById('grm_r0').value) || 0.5;
+            const p0 = parseFloat(document.getElementById('grm_p0').value) || 0.9;
+            const a0 = parseFloat(document.getElementById('grm_a0').value) || 1.0;
+            const K0raw = document.getElementById('grm_K0').value.trim();
+            const K0 = K0raw ? parseFloat(K0raw) : Math.max(fitObs.reduce((a,b)=>a+b,0)*1.3, 10);
+            const I0 = Math.max(fitObs[0], 1);
+            const grmFn = (t, params) => {
               const [K, r, p, a] = params;
-              const C0 = I0;
-              const Ks = Math.max(K, 1);
-              const ps = Math.max(0.01, Math.min(p, 1.0));
-              const as = Math.max(0.01, a);
-              if (t <= 0) return Math.max(0, r * Math.pow(C0, ps) * (1 - Math.pow(Math.min(C0/Ks, 1-1e-10), as)));
-              const steps = Math.max(200, Math.ceil(t * 20));
-              const h = t / steps;
-              let C = C0;
-              for (let i = 0; i < steps; i++) {
-                const sat = Math.pow(Math.min(C/Ks, 1-1e-10), as);
-                const dC  = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - sat);
-                C = Math.max(C + h * Math.max(dC, 0), 1e-10);
-                if (C >= Ks) { C = Ks; break; }
+              const Ks=Math.max(K,1),ps=Math.max(0.01,Math.min(p,1.0)),as=Math.max(0.01,a),C0=I0;
+              function d(C){return r*Math.pow(Math.max(C,1e-10),ps)*(1-Math.pow(Math.min(C/Ks,1-1e-10),as));}
+              if(t<=0)return Math.max(0,d(C0));
+              const steps=Math.max(400,Math.ceil(t*40)),h=t/steps;let C=C0;
+              for(let i=0;i<steps;i++){
+                const k1=d(C),k2=d(Math.max(C+h*k1/2,1e-10)),k3=d(Math.max(C+h*k2/2,1e-10)),k4=d(Math.max(C+h*k3,1e-10));
+                C=Math.max(C+h*(k1+2*k2+2*k3+k4)/6,1e-10);if(C>=Ks){C=Ks;break;}
               }
-              const sat = Math.pow(Math.min(C/Ks, 1-1e-10), as);
-              return Math.max(0, r * Math.pow(Math.max(C, 1e-10), ps) * (1 - sat));
-            }
-          }
+              return Math.max(0,d(C));
+            };
+            return { ...model, _I0: I0, fn: grmFn,
+              init: () => [K0, r0, p0, a0] };
+          })()
         : model;
 
       const lf=getLossFn(activeModel,t,fitObs);
