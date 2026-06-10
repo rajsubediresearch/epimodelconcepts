@@ -149,35 +149,35 @@ const Models = (() => {
       name: 'Generalized Richards Model (GRM)',
       equationDisplay: 'I(t) = dC/dt|_t = r · C(t)^p · [1 − (C(t)/K)^a]',
       deDisplay: 'dC/dt = r · C^p · [1 − (C/K)^a]',
-      params: ['K','r','p','a','I0'],
-      paramNames: ['K (final size)', 'r (growth rate)', 'p (scaling)', 'a (asymmetry)', 'I₀ (initial cases)'],
+      params: ['K','r','p','a'],
+      paramNames: ['K (final size)', 'r (growth rate)', 'p (scaling)', 'a (asymmetry)'],
       paramDescriptions: [
         'Final cumulative epidemic size (carrying capacity)',
         'Growth rate constant',
-        'Scaling of growth: p=1 → Richards; p<1 → sub-exponential early growth; p ∈ (0,1] matching MATLAB QuantDiffForecast bounds',
-        'Asymmetry of the epidemic curve: a=1 → symmetric; a>1 → faster rise/slower decline.',
-        'Initial cumulative case count at t=0 (seeded from first observation, matching MATLAB fixI0=1)'
+        'Scaling of growth: p=1 → Richards; p<1 → sub-exponential early growth; p ∈ (0,1] matching MATLAB QuantDiffForecast',
+        'Asymmetry of the epidemic curve: a=1 → symmetric; a>1 → faster rise/slower decline.'
       ],
       init: (obs) => {
-        const K  = Math.max(obs.reduce((a,b)=>a+b,0) * 1.3, 10);
-        const I0 = Math.max(obs[0], 1);
-        return [K, 0.5, 0.9, 1.0, I0];
+        const K = Math.max(obs.reduce((a,b)=>a+b,0) * 1.3, 10);
+        return [K, 0.5, 0.9, 1.0];
       },
-      // Explicit parameter bounds — returned 1e15 if violated so Nelder-Mead
-      // never wanders into physically impossible regions during bootstrap
-      lossConstraint: ([K, r, p, a, I0]) => {
-        if (K  <= 0)    return false;
-        if (r  <= 0)    return false;
-        if (p  <= 0 || p > 1.0) return false; // matches MATLAB UB p=1
-        if (a  <= 0 || a > 10)  return false; // matches MATLAB UB a=10
-        if (I0 <= 0)    return false;
+      // I0 is NOT a free parameter — fixed to obs[0] matching MATLAB fixI0=1.
+      // The calling context (runFit / bootstrap) binds fn with the correct I0
+      // via model._I0 which is set from fitObs[0] before optimisation begins.
+      lossConstraint: ([K, r, p, a]) => {
+        if (K <= 0)           return false;
+        if (r <= 0)           return false;
+        if (p <= 0 || p > 1)  return false;
+        if (a <= 0 || a > 10) return false;
         return true;
       },
-      fn: (t, [K, r, p, a, I0]) => {
+      fn: (t, [K, r, p, a]) => {
+        // I0 defaults to 1 here; the active model in phenomenological.html
+        // overrides this fn with a closure that binds I0 = fitObs[0]
+        const C0 = 1;
         const Ks = Math.max(K, 1);
         const ps = Math.max(0.01, Math.min(p, 1.0));
         const as = Math.max(0.01, a);
-        const C0 = Math.max(I0 != null ? I0 : 1, 1e-6);
         if (t <= 0) {
           return Math.max(0, r * Math.pow(C0, ps) * (1 - Math.pow(Math.min(C0/Ks, 1-1e-10), as)));
         }

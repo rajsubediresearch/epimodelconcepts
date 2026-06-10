@@ -355,18 +355,45 @@ function runFit(){
         }
       }
 
-      const lf=getLossFn(model,t,fitObs);
-      const res=Optimizer.fitModel(lf,model.init(fitObs),{maxIter:8000,tol:1e-12});
+      // For GRM: fix I0 to first observation (matching MATLAB fixI0=1).
+      // Wrap model.fn in a closure so the optimizer never sees I0 as a parameter.
+      const activeModel = model.id === 'grm'
+        ? { ...model,
+            _I0: Math.max(fitObs[0], 1),
+            fn: (t, params) => {
+              const I0 = Math.max(fitObs[0], 1);
+              const [K, r, p, a] = params;
+              const C0 = I0;
+              const Ks = Math.max(K, 1);
+              const ps = Math.max(0.01, Math.min(p, 1.0));
+              const as = Math.max(0.01, a);
+              if (t <= 0) return Math.max(0, r * Math.pow(C0, ps) * (1 - Math.pow(Math.min(C0/Ks, 1-1e-10), as)));
+              const steps = Math.max(200, Math.ceil(t * 20));
+              const h = t / steps;
+              let C = C0;
+              for (let i = 0; i < steps; i++) {
+                const sat = Math.pow(Math.min(C/Ks, 1-1e-10), as);
+                const dC  = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - sat);
+                C = Math.max(C + h * Math.max(dC, 0), 1e-10);
+                if (C >= Ks) { C = Ks; break; }
+              }
+              const sat = Math.pow(Math.min(C/Ks, 1-1e-10), as);
+              return Math.max(0, r * Math.pow(Math.max(C, 1e-10), ps) * (1 - sat));
+            }
+          }
+        : model;
 
-      // Predict on full training window — leading-zero periods get fn evaluated
-      // at negative t which clamps to ~0 for all models
+      const lf=getLossFn(activeModel,t,fitObs);
+      const res=Optimizer.fitModel(lf,activeModel.init(fitObs),{maxIter:8000,tol:1e-12});
+
+      // Predict on full training window
       const fullT=trainObs.map((_,i)=>i-tOffset);
-      const trainPred=fullT.map(ti=>Math.max(0,model.fn(ti,res.params)));
+      const trainPred=fullT.map(ti=>Math.max(0,activeModel.fn(ti,res.params)));
       const forecastT=Array.from({length:horizon},(_,i)=>t.length+i);
-      const forecastPred=forecastT.map(ti=>Math.max(0,model.fn(ti,res.params)));
+      const forecastPred=forecastT.map(ti=>Math.max(0,activeModel.fn(ti,res.params)));
       const testPred=forecastPred.slice(0,testObs.length);
 
-      const ctx={model,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,
+      const ctx={model:activeModel,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,
         horizon,forecastT,forecastPred,params:res.params,start,end,testStart,testEnd,
         futureHorizon:split.futureHorizon};
       lastCtx=ctx;
@@ -375,8 +402,7 @@ function runFit(){
       if(nBoot>0){
         document.getElementById('fitStatus').textContent='Fitted ✓ — running bootstrap…';
         document.getElementById('progressWrap').style.display='block';
-        // Bootstrap on fitObs (leading zeros stripped) so resampling is clean
-        runBootstrapAuto(model,fitObs,t,res.params,nBoot,ctx,()=>{
+        runBootstrapAuto(activeModel,fitObs,t,res.params,nBoot,ctx,()=>{
           document.getElementById('fitBtn').disabled=false;
           document.getElementById('compareBtn').disabled=false;
           document.getElementById('progressWrap').style.display='none';
