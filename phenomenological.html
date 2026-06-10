@@ -439,6 +439,8 @@ function runFit(){
 
 async function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
   const constraint=model.lossConstraint||null;
+  // For GRM: pass SSE loss builder for stage-1 basin-finding in each bootstrap iteration
+  const sseLfBuilder = model.id==='grm' ? ((fn,t,obs)=>Models.sseLoss(fn,t,obs)) : null;
   const bootResult=await Optimizer.bootstrap(
     model.fn,getLossFnBuilder(),t,obs,params,nBoot,currentLoss,2,
     (p)=>{
@@ -446,7 +448,8 @@ async function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
       document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot} iterations…`;
     },
     constraint,
-    model.isCumulative===true
+    model.isCumulative===true,
+    sseLfBuilder
   );
     document.getElementById('progressBar').style.width='100%';
     if(bootResult){
