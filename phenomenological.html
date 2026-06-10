@@ -314,12 +314,12 @@ function getLossFn(model,t,obs){
     ?(params=>constraint(params)?baseFn(params):1e15)
     :baseFn;
   if(currentLoss==='poisson')return wrap(Models.poissonLoss(model.fn,t,obs));
-  if(currentLoss==='nb')return wrap(Models.nbLoss(model.fn,t,obs,2));
+  if(currentLoss==='nb')return wrap(Models.nbLossProfiled(model.fn,t,obs));
   return wrap(Models.sseLoss(model.fn,t,obs));
 }
 function getLossFnBuilder(){
   if(currentLoss==='poisson')return(fn,t,obs,th)=>Models.poissonLoss(fn,t,obs);
-  if(currentLoss==='nb')return(fn,t,obs,th)=>Models.nbLoss(fn,t,obs,th||2);
+  if(currentLoss==='nb')return(fn,t,obs,th)=>Models.nbLossProfiled(fn,t,obs);
   return(fn,t,obs,th)=>Models.sseLoss(fn,t,obs);
 }
 
@@ -384,7 +384,20 @@ function runFit(){
         : model;
 
       const lf=getLossFn(activeModel,t,fitObs);
-      const res=Optimizer.fitModel(lf,activeModel.init(fitObs),{maxIter:8000,tol:1e-12});
+
+      let res;
+      if(model.id==='grm' && currentLoss!=='sse'){
+        // Two-stage fit for GRM matching MATLAB approach:
+        // Stage 1: SSE to find the correct parameter basin (avoids NB peak-weighting trap)
+        // Stage 2: MLE (Poisson or NB) starting from SSE solution to refine
+        const sseLf=Models.sseLoss(activeModel.fn,t,fitObs);
+        const sseConstraint=activeModel.lossConstraint;
+        const sseLfConstrained=sseConstraint?(p=>sseConstraint(p)?sseLf(p):1e15):sseLf;
+        const stage1=Optimizer.fitModel(sseLfConstrained,activeModel.init(fitObs),{maxIter:8000,tol:1e-12,nRestarts:4});
+        res=Optimizer.fitModel(lf,stage1.params,{maxIter:5000,tol:1e-12,nRestarts:2});
+      } else {
+        res=Optimizer.fitModel(lf,activeModel.init(fitObs),{maxIter:8000,tol:1e-12});
+      }
 
       // Predict on full training window
       const fullT=trainObs.map((_,i)=>i-tOffset);

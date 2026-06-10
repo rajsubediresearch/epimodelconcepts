@@ -433,5 +433,41 @@ const Models = (() => {
     };
   }
 
-  return { phenomenological, logLikPoisson, logLikNB, sseLoss, poissonLoss, nbLoss, defaultDatasets };
+  // NB loss with alpha (dispersion) profiled out at each evaluation —
+  // matches MATLAB method3 (var = mean + alpha*mean) more closely.
+  // alpha_hat = argmax_alpha LL(params, alpha) solved by 1-D golden-section search.
+  function nbLossProfiled(modelFn, t, obs) {
+    function logLikNBtheta(pred, th) {
+      let ll = 0;
+      function lg(x){if(x<=0)return 0;if(x<1)return lg(x+1)-Math.log(x);let s=0,xi=x;while(xi<10){s-=Math.log(xi);xi++;}return s+(xi-0.5)*Math.log(xi)-xi+0.5*Math.log(2*Math.PI)+1/(12*xi);}
+      for(let i=0;i<obs.length;i++){
+        const mu=Math.max(pred[i],1e-10),o=obs[i];
+        ll+=lg(o+th)-lg(th)-lg(o+1)+th*Math.log(th/(th+mu))+o*Math.log(mu/(th+mu));
+      }
+      return ll;
+    }
+    // Golden-section search for optimal theta in [0.1, 100]
+    function bestTheta(pred) {
+      let a=0.1,b=100,tol=0.01;
+      const phi=(Math.sqrt(5)-1)/2;
+      let c=b-phi*(b-a),d=a+phi*(b-a);
+      let fc=-logLikNBtheta(pred,c),fd=-logLikNBtheta(pred,d);
+      for(let i=0;i<50;i++){
+        if(fc<fd){b=d;d=c;fd=fc;c=b-phi*(b-a);fc=-logLikNBtheta(pred,c);}
+        else{a=c;c=d;fc=fd;d=a+phi*(b-a);fd=-logLikNBtheta(pred,d);}
+        if(Math.abs(b-a)<tol)break;
+      }
+      return (a+b)/2;
+    }
+    return params => {
+      try {
+        const pred = t.map(ti => modelFn(ti, params));
+        if (pred.some(v => !isFinite(v) || v <= 0)) return 1e15;
+        const th = bestTheta(pred);
+        return -logLikNBtheta(pred, th);
+      } catch(e) { return 1e15; }
+    };
+  }
+
+  return { phenomenological, logLikPoisson, logLikNB, sseLoss, poissonLoss, nbLoss, nbLossProfiled, defaultDatasets };
 })();
