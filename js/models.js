@@ -152,36 +152,43 @@ const Models = (() => {
       equationDisplay: 'I(t) = dC/dt|_t = r · C(t)^p · [1 − (C(t)/K)^a]',
       deDisplay: 'dC/dt = r · C^p · [1 − (C/K)^a]',
       params: ['K','r','p','a'],
-      paramNames: ['K (final size)', 'r (growth rate)', 'p (scaling)', 'a (asymmetry)'],
+      paramNames: ['K (final size)', 'r (growth rate)', 'p (scaling)', 'a (asymmetry)', 'I₀ (initial cases)'],
       paramDescriptions: [
         'Final cumulative epidemic size (carrying capacity)',
         'Growth rate constant',
-        'Scaling of growth: p=1 → Richards; p<1 → sub-exponential early growth; p typically 0.6–1.0 in epidemic data',
-        'Asymmetry of the epidemic curve: a=1 → symmetric (logistic-type); a>1 → faster rise/slower decline. Together p and a allow independent control of early growth deceleration and curve asymmetry.'
+        'Scaling of growth: p=1 → Richards; p<1 → sub-exponential early growth; p ∈ (0,1] matching MATLAB QuantDiffForecast bounds',
+        'Asymmetry of the epidemic curve: a=1 → symmetric; a>1 → faster rise/slower decline. Together p and a independently control early growth deceleration and curve asymmetry.',
+        'Initial cumulative case count at t=0 (seeded from first observation, matching MATLAB fixI0=1)'
       ],
       init: (obs) => {
-        // K is total epidemic size — for incidence data, sum approximates it
         const K = Math.max(obs.reduce((a,b)=>a+b,0) * 1.3, 10);
-        return [K, 0.5, 0.9, 1.0];
+        const I0 = Math.max(obs[0], 1);
+        return [K, 0.5, 0.9, 1.0, I0];
       },
-      fn: (t, [K, r, p, a]) => {
-        // Integrate dC/dt = r·C^p·[1−(C/K)^a] from 0 to t, return incidence at t
+      fn: (t, [K, r, p, a, I0]) => {
+        // Integrate dC/dt = r·C^p·[1−(C/K)^a] from 0 to t
+        // Seed from I0 = first observed value (matching MATLAB fixI0=1)
+        // Returns incidence I(t) = dC/dt at time t
         const Ks = Math.max(K, 1);
-        const ps = Math.max(0.01, Math.min(p, 1.5));
+        const ps = Math.max(0.01, Math.min(p, 1.0)); // p ∈ (0,1] — matches MATLAB UB
         const as = Math.max(0.01, a);
+        const C0 = Math.max(I0 != null ? I0 : 1, 1e-6);
+        if (t <= 0) {
+          return Math.max(0, r * Math.pow(C0, ps) * (1 - Math.pow(Math.min(C0/Ks, 1-1e-10), as)));
+        }
         const steps = Math.max(200, Math.ceil(t * 20));
         const h = t / steps;
-        if (t <= 0) return Math.max(0, r); // incidence at t=0 ≈ r·1^p·[1−(1/K)^a] ≈ r
-        let C = 1.0;
+        let C = C0;
         for (let i = 0; i < steps; i++) {
-          const dC = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - Math.pow(Math.min(C / Ks, 1 - 1e-10), as));
+          const saturation = Math.pow(Math.min(C / Ks, 1 - 1e-10), as);
+          const dC = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - saturation);
           C = Math.max(C + h * Math.max(dC, 0), 1e-10);
           if (C >= Ks) { C = Ks; break; }
         }
-        // Return incidence (dC/dt) at current C
-        const dCdt = r * Math.pow(Math.max(C, 1e-10), ps) * (1 - Math.pow(Math.min(C / Ks, 1 - 1e-10), as));
-        return Math.max(0, dCdt);
+        const saturation = Math.pow(Math.min(C / Ks, 1 - 1e-10), as);
+        return Math.max(0, r * Math.pow(Math.max(C, 1e-10), ps) * (1 - saturation));
       },
+      params: ['K','r','p','a','I0'],
       isCumulative: false,
       definition: 'The GRM (Chowell 2017; Viboud et al. 2016) generalizes Richards by adding the growth scaling parameter p to the incidence term. It numerically integrates the cumulative trajectory C(t) and outputs incidence I(t) = dC/dt — making it directly comparable to the QuantDiffForecast MATLAB toolbox. When p=1 it reduces to Richards incidence; when p=1 and a=1 it reduces to logistic incidence. The GRM is the most flexible single-wave phenomenological model for incidence data.',
       assumptions: ['Single epidemic wave','Power-law scaling of both incidence and saturation terms','Closed population'],

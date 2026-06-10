@@ -84,23 +84,40 @@ const Optimizer = (() => {
 
   /* ── Fit a model: accepts either a pre-built loss fn or modelFn+t+obs ── */
   function fitModel(lossFnOrModelFn, initOrT, optsOrObs, initMaybe, optsMaybe) {
-    // Two call signatures:
-    // fitModel(lossFn, init, opts)  — pre-built loss
-    // fitModel(modelFn, t, obs, init, opts) — build SSE internally
     let lossFn, init, opts;
     if (typeof initOrT[0] === 'number' && !Array.isArray(initOrT[0])) {
-      // fitModel(lossFn, init, opts)
       lossFn = lossFnOrModelFn;
       init = initOrT;
       opts = optsOrObs || {};
     } else {
-      // fitModel(modelFn, t, obs, init, opts)
       lossFn = sseLoss(lossFnOrModelFn, initOrT, optsOrObs);
       init = initMaybe;
       opts = optsMaybe || {};
     }
-    const result = nelderMead(lossFn, init, opts);
-    return { params: result.params, predicted: null, sse: result.value, iterations: result.iterations };
+
+    // Multi-start: run Nelder-Mead from the supplied init plus N randomly
+    // perturbed starts. Take the best result — approximates MATLAB MultiStart.
+    const nRestarts = opts.nRestarts != null ? opts.nRestarts : 8;
+    const nmOpts = { maxIter: opts.maxIter || 5000, tol: opts.tol || 1e-10 };
+
+    function runOnce(startPt) {
+      try { return nelderMead(lossFn, startPt, nmOpts); }
+      catch(e) { return { params: startPt, value: 1e15, iterations: 0 }; }
+    }
+
+    let best = runOnce(init.slice());
+
+    for (let k = 0; k < nRestarts; k++) {
+      // Perturb each parameter by ±50% randomly around the best so far
+      const perturbed = best.params.map(v => {
+        const scale = 0.5 + Math.random(); // uniform in [0.5, 1.5]
+        return v * scale;
+      });
+      const res = runOnce(perturbed);
+      if (res.value < best.value) best = res;
+    }
+
+    return { params: best.params, predicted: null, sse: best.value, iterations: best.iterations };
   }
 
   /* ── Bootstrap confidence intervals on parameters ── */
