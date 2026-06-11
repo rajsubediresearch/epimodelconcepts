@@ -134,8 +134,7 @@
 </main>
 <footer class="site-footer">EpiModelConcepts · <a href="https://github.com/rajsubediresearch/epimodelconcepts" target="_blank">GitHub</a></footer>
 
-<script src="js/core.js"></script>
-<script>
+  
 /* ═══════════════════════════════════════
    MODEL DEFINITIONS
 ═══════════════════════════════════════ */
@@ -468,7 +467,6 @@ function plotResults(sol, m, p, days) {
    KEY QUANTITIES
 ═══════════════════════════════════════ */
 function showKeyQuantities(sol, m, p, days) {
-  const S = Core;
   const iIdx = m.compartments.indexOf('I');
   const rIdx = m.compartments.indexOf('R');
   const eIdx = m.compartments.indexOf('E');
