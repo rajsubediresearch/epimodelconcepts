@@ -26,7 +26,7 @@
 <main class="page-wrap">
   <div class="page-hero">
     <h1>EpiModelConcepts</h1>
-    <p>Interactive epidemic modeling concepts for teaching and research. Fit real outbreak data to growth models, explore key quantities, and understand every result through three-layer definitions — concept, interpretation, and implication. No R, no installation, runs entirely in the browser.</p>
+    <p>Interactive epidemic modeling concepts for teaching and research. Explore growth curve models, statistical count models, and compartmental models through simulation — adjust parameters, run instantly, and understand every result through plain-language interpretations. No R, no installation, runs entirely in the browser.</p>
   </div>
 
   <!-- Module cards -->
@@ -57,13 +57,13 @@
           <div style="font-size:28px;line-height:1">📈</div>
           <div>
             <div style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:4px">Phenomenological models</div>
-            <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:10px">Fit exponential, logistic, Richards, Gompertz, and sub-epidemic wave models to real outbreak data. Compare all models simultaneously. Full error metrics (RMSE, MAE, MAPE, R², AIC, BIC) with three-layer interpretations. Paste your own data or use built-in datasets.</div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:10px">Interactive simulator for growth curve models — Exponential, GGM, Logistic, Richards, Gompertz, and GRM. Adjust parameter sliders, explore example presets, and see live incidence and cumulative curves update instantly. Auto-generated plain-language interpretation for every simulation.</div>
             <div style="display:flex;flex-wrap:wrap;gap:5px">
               <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Logistic</span>
               <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Richards</span>
-              <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Gompertz</span>
-              <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Sub-epidemic</span>
-              <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Model comparison</span>
+              <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">GRM</span>
+              <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">GGM</span>
+              <span class="tag" style="background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Model nesting</span>
             </div>
           </div>
           <span style="font-size:18px;color:var(--text-tertiary);align-self:center;margin-left:auto">→</span>
@@ -77,12 +77,12 @@
           <div style="font-size:28px;line-height:1">🧮</div>
           <div>
             <div style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:4px">Statistical models</div>
-            <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:10px">Log-linear, Poisson, and Negative Binomial regression fitted to count data. Automatic dispersion check (VMR) with model recommendations. Growth rate, doubling time, and rate ratio interpretation. Residual diagnostics and model comparison.</div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:10px">Interactive simulator for statistical epidemic count models — Poisson GLM, Negative Binomial GLM, Log-linear, ARIMA, and GAM. Generate synthetic epidemic data, visualise observed counts against the true mean, and explore how each model's assumptions shape what it sees.</div>
             <div style="display:flex;flex-wrap:wrap;gap:5px">
               <span class="tag" style="background:var(--warn-bg);border-color:var(--warn-text);color:var(--warn-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Poisson GLM</span>
               <span class="tag" style="background:var(--warn-bg);border-color:var(--warn-text);color:var(--warn-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Negative Binomial</span>
-              <span class="tag" style="background:var(--warn-bg);border-color:var(--warn-text);color:var(--warn-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Dispersion check</span>
-              <span class="tag" style="background:var(--warn-bg);border-color:var(--warn-text);color:var(--warn-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">Doubling time</span>
+              <span class="tag" style="background:var(--warn-bg);border-color:var(--warn-text);color:var(--warn-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">ARIMA</span>
+              <span class="tag" style="background:var(--warn-bg);border-color:var(--warn-text);color:var(--warn-text);font-size:10px;padding:2px 8px;border-radius:20px;border:0.5px solid;font-weight:500">GAM</span>
             </div>
           </div>
           <span style="font-size:18px;color:var(--text-tertiary);align-self:center;margin-left:auto">→</span>
