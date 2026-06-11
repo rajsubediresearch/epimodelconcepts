@@ -3,783 +3,594 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EpiModelConcepts — Phenomenological Models</title>
+  <title>EpiModelConcepts — Phenomenological Models Explorer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <style>
-    .progress-bar-wrap{background:var(--bg-secondary);border-radius:4px;height:6px;margin:8px 0;overflow:hidden}
-    .progress-bar{height:6px;background:var(--accent);border-radius:4px;transition:width 0.15s;width:0%}
-    .hist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:10px}
-    .split-badge{display:inline-block;font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
-    .split-badge.train{background:var(--accent-bg);color:var(--accent-text);border:0.5px solid var(--accent)}
-    .split-badge.test{background:var(--success-bg);color:var(--success-text);border:0.5px solid var(--success-text)}
-    .split-badge.future{background:var(--warn-bg);color:var(--warn-text);border:0.5px solid var(--warn-text)}
-    .forecast-eval-card{background:var(--success-bg);border:0.5px solid var(--success-text);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:1rem}
-    .forecast-eval-card .section-label{color:var(--success-text)}
+    .preset-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+    .preset-btn{font-size:12px;font-family:var(--font);padding:5px 12px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-secondary);cursor:pointer;transition:all 0.15s;text-align:left}
+    .preset-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .param-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-top:8px}
+    .param-card{background:var(--bg-secondary);border-radius:var(--radius-md);padding:0.75rem}
+    .param-card label{font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:4px}
+    .param-card input[type=number]{width:100%;font-family:var(--font-mono);font-size:14px;font-weight:500;text-align:center;padding:6px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg);color:var(--text)}
+    .param-card input[type=range]{width:100%;margin-top:4px;accent-color:var(--accent)}
+    .param-card input:focus{outline:none;border-color:var(--accent)}
+    .param-card .param-hint{font-size:11px;color:var(--text-tertiary);margin-top:3px;line-height:1.4}
+    .interp-card{background:var(--accent-bg);border:0.5px solid var(--accent);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-top:0.75rem}
+    .interp-card .section-label{color:var(--accent-text)}
+    .interp-card p{font-size:13px;color:var(--accent-text);line-height:1.7;margin-bottom:6px}
+    .interp-card p:last-child{margin-bottom:0}
+    .kv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:8px}
+    .kv-card{background:var(--bg-secondary);border-radius:var(--radius-md);padding:0.75rem 1rem}
+    .kv-card .kv-label{font-size:11px;color:var(--text-tertiary);margin-bottom:3px}
+    .kv-card .kv-value{font-size:18px;font-weight:500;color:var(--text);font-family:var(--font-mono)}
+    .kv-card .kv-sub{font-size:11px;color:var(--text-secondary);margin-top:2px}
+    .nest-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:20px;background:var(--bg-secondary);border:0.5px solid var(--border-med);color:var(--text-tertiary);margin-left:6px;vertical-align:middle}
   </style>
 </head>
 <body>
 <header class="site-header">
-  <a href="index.html" class="logo">Epi<span>ModelConcepts</span></a>
+  <a href="https://rajsubediresearch.github.io" target="_blank" class="logo" style="font-size:13px;color:var(--text-tertiary);font-weight:400">← Main site</a>
   <nav class="site-nav">
-    <a href="https://rajsubediresearch.github.io" target="_blank">← Main site</a>
     <a href="index.html">EpiModelConcepts</a>
     <a href="concepts.html">Core concepts</a>
-    <a href="phenomenological.html" class="active">Phenomenological</a>
+    <a href="phenomenological.html">Phenomenological</a>
     <a href="statistical.html">Statistical</a>
     <a href="sir_explorer.html">SIR/SEIR Explorer</a>
   </nav>
 </header>
+
 <main class="page-wrap">
   <div class="page-hero">
-    <h1>Phenomenological models</h1>
-    <p>Fit mathematical growth curves to epidemic data — from simple exponential and logistic growth to the Generalized Growth Model (GGM) and Generalized Richards Model (GRM). Define a training window and forecast horizon to evaluate out-of-sample performance, or fit the full dataset for final estimation. Bootstrap CIs run automatically after fitting.</p>
+    <h1>Phenomenological Models Explorer</h1>
+    <p>Interactive simulator for growth curve models — from simple exponential growth to the Generalized Richards Model (GRM). Adjust parameters and run to see how each model shapes an epidemic curve. Example presets cover common outbreak patterns. Use the <a href="phenomenological.html">fitting tool</a> to calibrate these models to real data.</p>
   </div>
 
   <div class="card">
-    <div class="section-label">Outbreak data</div>
-    <div class="field-row"><label>Disease</label><input type="text" id="diseaseName" value="Ebola" oninput="updateLabels()"></div>
-    <div class="field-row"><label>Location</label><input type="text" id="placeName" value="West Africa" oninput="updateLabels()"></div>
-    <div class="field-row"><label>Time unit</label>
-      <select id="timeUnit" onchange="updateLabels()">
-        <option value="weekly">Weekly</option>
-        <option value="daily">Daily</option>
-        <option value="monthly">Monthly</option>
-        <option value="yearly">Yearly</option>
-      </select>
+    <div class="section-label">Model</div>
+    <div class="pill-group" id="modelPills">
+      <button class="pill-btn" onclick="setModel('exponential',this)">Exponential</button>
+      <button class="pill-btn" onclick="setModel('ggm',this)">GGM</button>
+      <button class="pill-btn active" onclick="setModel('logistic',this)">Logistic</button>
+      <button class="pill-btn" onclick="setModel('richards',this)">Richards</button>
+      <button class="pill-btn" onclick="setModel('gompertz',this)">Gompertz</button>
+      <button class="pill-btn" onclick="setModel('grm',this)">GRM</button>
     </div>
-    <div class="field-row"><label>Data type</label>
-      <select id="dataType">
-        <option value="cumulative">Cumulative cases</option>
-        <option value="incidence">Incidence (new cases per period)</option>
-      </select>
-    </div>
+    <div id="modelDescription" class="info-box" style="margin-top:8px;font-size:13px"></div>
 
-    <div class="inner-divider">Load example or enter your own</div>
-    <div class="pill-group" id="datasetPills">
-      <button class="pill-btn active" onclick="loadDataset('ebola2014',this)">Ebola 2014</button>
-      <button class="pill-btn" onclick="loadDataset('measles2019',this)">Measles DRC 2019</button>
-      <button class="pill-btn" onclick="loadDataset('covid2020',this)">COVID-19 US 2020</button>
-      <button class="pill-btn" onclick="loadDataset('influenza2009',this)">H1N1 2009</button>
-      <button class="pill-btn" onclick="loadDataset('custom',this)">Custom</button>
-    </div>
-    <div class="field-row"><label>Case counts</label>
-      <textarea id="dataInput" placeholder="Comma or newline separated numbers" oninput="updateSplitInfo()"></textarea>
-    </div>
+    <div class="inner-divider">Example presets</div>
+    <div class="preset-grid" id="presetGrid"></div>
 
-    <div class="inner-divider">Model</div>
-    <div class="pill-group" id="modelPills"></div>
+    <div class="inner-divider">Parameters</div>
+    <div class="param-grid" id="paramGrid"></div>
 
-    <div class="inner-divider">Fitting objective</div>
-    <div class="pill-group" id="lossPills">
-      <button class="pill-btn active" onclick="setLoss('sse',this)">Least squares (SSE)</button>
-      <button class="pill-btn" onclick="setLoss('poisson',this)">Poisson log-likelihood</button>
-      <button class="pill-btn" onclick="setLoss('nb',this)">Negative Binomial log-likelihood</button>
-    </div>
-    <div id="lossNote" class="info-box" style="margin-top:4px;font-size:12px"></div>
-
-    <div class="inner-divider">Training window &amp; forecast horizon</div>
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.6">
-      Fit on a training window, then forecast ahead. If observed data exists in the forecast window, forecast evaluation metrics are computed automatically.
-    </p>
-    <div class="field-row">
-      <label>Training: start</label>
-      <input type="number" id="fitStart" value="1" min="1" oninput="updateSplitInfo()">
-      <span style="font-size:12px;color:var(--text-tertiary)" id="fitStartUnit">period</span>
-    </div>
-    <div class="field-row">
-      <label>Training: end</label>
-      <input type="number" id="fitEnd" value="28" min="1" oninput="updateSplitInfo()">
-      <span style="font-size:12px;color:var(--text-tertiary)" id="fitEndUnit">period</span>
-    </div>
-    <div class="field-row">
-      <label>Forecast horizon</label>
-      <input type="number" id="forecastH" value="4" min="0" max="52" oninput="updateSplitInfo()">
-      <span style="font-size:12px;color:var(--text-tertiary)" id="forecastHLabel">periods ahead</span>
-    </div>
-    <div id="splitInfo" class="info-box" style="margin-top:6px;font-size:13px;line-height:1.6"></div>
-
-    <div class="inner-divider">Bootstrap uncertainty</div>
-    <div class="field-row">
-      <label>Bootstrap iterations</label>
-      <input type="number" id="bootN" value="300" min="0" max="1000" step="50">
-      <span style="font-size:12px;color:var(--text-tertiary)">Set to 0 to skip</span>
-    </div>
-    <div class="info-box" style="font-size:12px;margin-top:4px">
-      Bootstrap runs automatically after fitting. 300 iterations recommended (~3–5s). Set to 0 to get point estimates only. Higher = more reliable CIs. <strong>Note:</strong> GRM (numerical integration) and Two-Wave Richards (8 parameters) are slower to fit — consider 100–150 bootstrap iterations for those models.
-    </div>
-
-    <!-- GRM initial parameter values — shown only when GRM selected -->
-    <div id="grmInitPanel" style="display:none;margin-top:0.75rem;padding:0.75rem;background:var(--bg-secondary);border-radius:var(--border-radius-md);border:1px solid var(--border)">
-      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em">GRM — Initial parameter values</div>
-      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:10px">GRM has correlated parameters — provide informed starting values to guide the optimizer to the correct solution. Defaults match the QuantDiffForecast / ODEcast toolboxes.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="field-row" style="margin:0">
-          <label style="font-size:12px">r₀ (growth rate)</label>
-          <input type="number" id="grm_r0" value="0.5" min="0.001" max="10" step="0.05" style="width:80px">
-        </div>
-        <div class="field-row" style="margin:0">
-          <label style="font-size:12px">p₀ (scaling)</label>
-          <input type="number" id="grm_p0" value="0.9" min="0.01" max="1" step="0.05" style="width:80px">
-        </div>
-        <div class="field-row" style="margin:0">
-          <label style="font-size:12px">K₀ (final size)</label>
-          <input type="number" id="grm_K0" value="" placeholder="auto" min="1" step="100" style="width:80px">
-        </div>
-        <div class="field-row" style="margin:0">
-          <label style="font-size:12px">a₀ (asymmetry)</label>
-          <input type="number" id="grm_a0" value="1.0" min="0.001" max="10" step="0.1" style="width:80px">
-        </div>
+    <div class="inner-divider">Simulation</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <div class="param-card" style="flex:1;min-width:180px">
+        <label>Duration (time units)</label>
+        <input type="number" id="simDuration" value="40" min="1" max="500">
+        <div class="param-hint">Total time periods to simulate</div>
       </div>
-      <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px">Leave K₀ blank to use auto (1.3 × sum of training data). Bounds: r∈(0,10], p∈(0,1], a∈(0,10], K∈[1,∞).</div>
+      <div class="param-card" style="flex:1;min-width:180px">
+        <label>Data type</label>
+        <select id="showType" style="width:100%;font-size:13px;padding:6px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg);color:var(--text)" onchange="runSim()">
+          <option value="incidence">Incidence (new cases per period)</option>
+          <option value="cumulative">Cumulative cases</option>
+          <option value="both">Both</option>
+        </select>
+        <div class="param-hint">What to display on the chart</div>
+      </div>
     </div>
-
-    <div style="margin-top:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button class="btn-primary" id="fitBtn" onclick="runFit()">Fit model</button>
-      <button class="btn-primary" id="compareBtn" onclick="fitAllModels()" style="background:var(--bg-secondary);color:var(--accent);border:0.5px solid var(--accent)">Compare all models</button>
-      <span id="fitStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
+    <div style="margin-top:0.75rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-primary" onclick="runSim()">Run simulation</button>
+      <span id="simStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
     </div>
-    <div class="progress-bar-wrap" id="progressWrap" style="display:none">
-      <div class="progress-bar" id="progressBar"></div>
-    </div>
-    <div id="progressLabel" style="font-size:11px;color:var(--text-tertiary);margin-top:2px"></div>
-  </div>
-
-  <div class="card" id="modelDefCard" style="display:none">
-    <div class="section-label" id="modelDefLabel">Model overview</div>
-    <div id="modelDefContent"></div>
   </div>
 
   <div id="resultsArea" style="display:none">
 
     <div class="card">
-      <div class="section-label" id="chartLabel">Fitted curve</div>
-      <div id="fitChart" style="width:100%;height:380px"></div>
-      <div id="chartLegendNote" style="font-size:12px;color:var(--text-tertiary);margin-top:6px"></div>
+      <div class="section-label" id="chartTitle">Epidemic curve</div>
+      <div id="simChart" style="width:100%;height:380px"></div>
     </div>
 
     <div class="card">
-      <div class="section-label">Estimated parameters</div>
-      <div id="paramResults"></div>
+      <div class="section-label">Key quantities</div>
+      <div class="kv-grid" id="kvGrid"></div>
+    </div>
+
+    <div class="interp-card" id="interpCard">
+      <div class="section-label">Auto-interpretation</div>
+      <div id="interpText"></div>
     </div>
 
     <div class="card">
-      <div class="section-label">Training fit metrics <span class="split-badge train">Training</span></div>
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">How well the model fits the training data used for estimation.</p>
-      <div id="metricsResults"></div>
+      <div class="section-label">Model equations</div>
+      <div id="equationsBox"></div>
     </div>
 
-    <div id="forecastEvalCard" style="display:none">
-      <div class="forecast-eval-card">
-        <div class="section-label">Forecast evaluation <span class="split-badge test">Hold-out</span></div>
-        <p style="font-size:13px;color:var(--success-text);margin-bottom:12px;line-height:1.6">
-          Comparing model <strong>forecasts</strong> against <strong>observed hold-out values</strong> — a more honest measure of predictive performance than in-sample metrics.
-        </p>
-        <div id="forecastMetrics"></div>
-        <div id="forecastVsObsChart" style="width:100%;height:260px;margin-top:12px"></div>
-      </div>
-    </div>
-
-    <div id="noTestDataNote" style="display:none">
-      <div class="card">
-        <div class="warn-box" style="margin:0">
-          ⚠ <strong>Forecast only — no hold-out evaluation.</strong>
-          Forecast extends beyond observed data. To evaluate forecast performance, ensure training end + forecast horizon ≤ total data length.
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="section-label">Dispersion analysis</div>
-      <div id="dispersionResults"></div>
-    </div>
-
-    <div class="card" id="bootCard" style="display:none">
-      <div class="section-label">Bootstrap CIs &amp; parameter distributions</div>
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
-        Parametric bootstrap: residuals resampled, model refit N times. Narrow histogram = well-identified. Wide or skewed = poorly constrained by data.
-      </p>
-      <div id="bootSummary"></div>
-      <div class="hist-grid" id="paramHistograms"></div>
-    </div>
   </div>
 
-  <div class="card" id="comparisonCard" style="display:none">
-    <div class="section-label">Model comparison — all models</div>
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">All models fitted on the same training window. Green = best. Orange = ΔAIC &gt; 10.</p>
-    <div id="comparisonTable"></div>
-  </div>
-
+  <!-- Model hierarchy reference -->
   <div class="card">
-    <div class="section-label">Training vs forecast evaluation</div>
+    <div class="section-label">Model hierarchy & parameter reference</div>
     <div class="concept-box">
-      <div class="cb-definition"><strong>In-sample fit vs out-of-sample forecast performance</strong>
-        In-sample metrics (RMSE, R², AIC) measure how well a model reproduces the data it was fitted to. A model with more parameters always fits better in-sample — but this does not mean it forecasts better. Overfitting is common: a flexible model learns noise in training data and extrapolates it incorrectly.
+      <div class="cb-definition"><strong>Nesting structure</strong>
+        Exponential ⊂ GGM (add scaling p) ⊂ GRM (add carrying capacity K and asymmetry a)
+        Logistic ⊂ Richards (add asymmetry a) ⊂ GRM (add scaling p)
+        Gompertz: asymmetric S-curve with fixed inflection at K/e — independent branch
+        The GRM nests all single-wave phenomenological models as special cases.
       </div>
-      <div class="cb-interpretation"><strong>The train/test split</strong>
-        Fitting on weeks 1–24 and evaluating on weeks 25–28 gives an honest estimate of forecast performance. A model with slightly worse in-sample fit but better out-of-sample RMSE is the preferred choice for forecasting. This is the basis of cross-validation and proper scoring rules like WIS.
+      <div class="cb-interpretation"><strong>Parameters defined</strong>
+        r = intrinsic growth rate (per time unit). Controls how fast cases multiply early on.
+        K = final epidemic size (carrying capacity). Total cases at saturation.
+        p = scaling of growth (GGM, GRM). p=1 → exponential early growth; p&lt;1 → sub-exponential (polynomial). Captures spatial heterogeneity and clustering.
+        a = asymmetry (Richards, GRM). a=1 → symmetric (logistic); a&lt;1 → fast rise / slow decline; a&gt;1 → slow rise / fast decline.
+        t_m = inflection time. Time of peak incidence / maximum growth rate.
+        I₀ = initial condition. Cumulative cases at t=0 (for cumulative models) or seed cases (GGM, GRM).
       </div>
-      <div class="cb-sowhat">If your model has excellent training R² but high forecast RMSE, it is overfitting — too many parameters relative to data length. Try a simpler model (Logistic instead of Richards, or GGM for the growth phase only) or collect more data before the peak. For sub-exponential early growth, GGM or GRM are more appropriate than Exponential or Logistic.</div>
+      <div class="cb-sowhat">Phenomenological models describe the shape of an epidemic curve without assuming a transmission mechanism. They are fast to fit, easy to interpret, and well-suited for short-horizon forecasting when only case counts are available. Their main limitation is that parameters have no direct mechanistic meaning — unlike R₀ in compartmental models — and they cannot capture interventions, multiple waves, or population structure without extension.</div>
     </div>
   </div>
+
 </main>
 <footer class="site-footer">EpiModelConcepts · <a href="https://github.com/rajsubediresearch/epimodelconcepts" target="_blank">GitHub</a></footer>
 
 <script src="js/core.js"></script>
-<script src="js/optimizer.js"></script>
-<script src="js/models.js"></script>
 <script>
-let currentModel='logistic', currentLoss='sse';
-let lastCtx=null;
+/* ═══════════════════════════════════════
+   MODEL DEFINITIONS
+═══════════════════════════════════════ */
+const MODELS = {
 
-const lossNotes={
-  sse:'Least squares: minimizes Σ(obs−pred)². Assumes normal errors. Fast and robust.',
-  poisson:'Poisson log-likelihood: treats counts as Poisson-distributed (mean=variance). Appropriate when VMR ≈ 1.',
-  nb:'Negative Binomial log-likelihood: allows variance > mean. Best for overdispersed count data (VMR > 1.5).'
+  exponential: {
+    name: 'Exponential Growth',
+    desc: 'The simplest epidemic growth model. Cases multiply by a constant factor each period. Valid only in the early, unconstrained phase before susceptible depletion or interventions. Predicts unlimited growth — use GGM or Logistic to add a ceiling.',
+    nests: null,
+    equations: 'I(t) = I₀ · e^(r·t)<br><br>dI/dt = r · I',
+    isCumulative: false,
+    params: [
+      {id:'I0', label:'I₀ (initial cases)', value:5,   min:1,    max:500,  step:1,   hint:'Cases at t=0'},
+      {id:'r',  label:'r (growth rate)',    value:0.15, min:0.01, max:1,    step:0.01,hint:'Doubling time = ln(2)/r'},
+    ],
+    fn: (t, p) => p.I0 * Math.exp(p.r * t),
+    cumFn: null, // no closed-form saturation — cumulative is just fn itself
+    presets: [
+      {label:'Measles-like (r=0.25)', params:{I0:5, r:0.25}},
+      {label:'Influenza-like (r=0.15)', params:{I0:10, r:0.15}},
+      {label:'Slow growth (r=0.05)', params:{I0:50, r:0.05}},
+    ],
+    keyQuantities: (p, inc, cum, t) => {
+      const dt = p.r > 0 ? Math.log(2)/p.r : null;
+      return [
+        {label:'Growth rate r', value:p.r.toFixed(3), sub:'Per time unit'},
+        {label:'Doubling time', value:dt?dt.toFixed(2)+' periods':'—', sub:'ln(2)/r'},
+        {label:'Cases at end', value:Math.round(inc[inc.length-1]).toLocaleString(), sub:`t = ${t[t.length-1]}`},
+        {label:'Fold increase', value:(inc[inc.length-1]/p.I0).toFixed(1)+'×', sub:`Over ${t[t.length-1]} periods`},
+      ];
+    },
+    interpret: (p, inc, cum, t) => {
+      const dt = (Math.log(2)/p.r).toFixed(1);
+      return [
+        `With r = ${p.r}, cases double every <strong>${dt} time periods</strong>. After ${t[t.length-1]} periods, the model predicts <strong>${Math.round(inc[inc.length-1]).toLocaleString()} cases</strong> — ${(inc[inc.length-1]/p.I0).toFixed(0)}× the initial count.`,
+        `Exponential growth is only realistic for a limited early window. In practice, depletion of susceptibles, behavioral change, and interventions slow growth — the GGM (sub-exponential) or Logistic/Richards models are more appropriate once growth visibly decelerates.`,
+        `The growth rate r is related to the effective reproduction number R_eff and the generation time T_g by: r ≈ (R_eff − 1)/T_g for simple models. A doubling time of ${dt} periods corresponds to a serial interval of roughly T_g × ln(2)/ln(R₀) — model-dependent but useful for back-of-envelope R₀ estimation.`
+      ];
+    }
+  },
+
+  ggm: {
+    name: 'Generalized Growth Model (GGM)',
+    desc: 'Extends exponential growth by adding the scaling parameter p ∈ (0,1]. When p=1 it reduces to exponential; when p<1 it captures sub-exponential (polynomial) growth caused by spatial heterogeneity, contact clustering, or early interventions. Has no carrying capacity — designed for the growth phase only.',
+    nests: 'Nests Exponential (p=1)',
+    equations: 'C(t) = [C₀^(1−p) + r·(1−p)·t]^(1/(1−p))   for p ≠ 1<br><br>dC/dt = r · C^p',
+    isCumulative: true,
+    params: [
+      {id:'C0', label:'C₀ (initial cumulative)', value:5,   min:1,    max:500,  step:1,   hint:'Cumulative cases at t=0'},
+      {id:'r',  label:'r (growth rate)',          value:0.4, min:0.01, max:5,    step:0.05,hint:'Growth rate constant'},
+      {id:'p',  label:'p (scaling)',              value:0.8, min:0.01, max:1,    step:0.01,hint:'p=1 → exponential; p<1 → sub-exponential'},
+    ],
+    fn: (t, p) => {
+      const C0 = Math.max(p.C0, 1e-6);
+      const ps = Math.max(0.01, Math.min(p.p, 0.9999));
+      if (Math.abs(ps-1)<1e-4) return C0 * Math.exp(p.r * t);
+      const inner = Math.pow(C0, 1-ps) + p.r*(1-ps)*t;
+      return inner <= 0 ? 0 : Math.max(0, Math.pow(inner, 1/(1-ps)));
+    },
+    presets: [
+      {label:'Sub-exponential (p=0.7)', params:{C0:5, r:0.4, p:0.7}},
+      {label:'Near-exponential (p=0.95)', params:{C0:5, r:0.3, p:0.95}},
+      {label:'Polynomial (p=0.5)', params:{C0:10, r:0.5, p:0.5}},
+    ],
+    keyQuantities: (p, inc, cum, t) => [
+      {label:'Scaling p', value:p.p.toFixed(2), sub:p.p===1?'Exponential':p.p<0.5?'Strongly sub-exp':'Sub-exponential'},
+      {label:'Growth rate r', value:p.r.toFixed(3), sub:'Rate constant'},
+      {label:'Final cumulative', value:Math.round(cum[cum.length-1]).toLocaleString(), sub:`t = ${t[t.length-1]}`},
+      {label:'Peak incidence', value:Math.round(Math.max(...inc)).toLocaleString(), sub:'Max new cases per period'},
+    ],
+    interpret: (p, inc, cum, t) => [
+      `With p = ${p.p}, growth is <strong>${p.p < 0.7 ? 'strongly' : 'mildly'} sub-exponential</strong>. The cumulative curve C(t) = [C₀^(1−p) + r·(1−p)·t]^(1/(1−p)) grows as a power function of time — faster than linear but slower than exponential.`,
+      `Sub-exponential growth (p < 1) typically reflects <strong>spatial heterogeneity, contact clustering, or early interventions</strong> that limit how quickly the epidemic spreads through the population. A value of p = ${p.p} means that doubling time increases as the epidemic grows, unlike pure exponential growth where doubling time is constant.`,
+      `The GGM has no carrying capacity — it will grow indefinitely. It is designed for <strong>early-phase forecasting</strong> before the epidemic peak. Once growth visibly decelerates toward saturation, switch to Logistic, Richards, or GRM.`
+    ]
+  },
+
+  logistic: {
+    name: 'Logistic Growth',
+    desc: 'Adds a carrying capacity K to exponential growth, producing a symmetric S-shaped cumulative curve. The inflection always occurs at K/2 — incidence is a symmetric bell curve. Real outbreaks are rarely symmetric; use Richards or GRM for more flexibility.',
+    nests: 'Nests Exponential (K → ∞)',
+    equations: 'C(t) = K / (1 + A · e^(−r·t)),   A = (K − C₀)/C₀<br><br>dC/dt = r · C · (1 − C/K)',
+    isCumulative: true,
+    params: [
+      {id:'K',  label:'K (final size)',    value:1000, min:10,   max:100000, step:10,  hint:'Total epidemic size'},
+      {id:'r',  label:'r (growth rate)',   value:0.3,  min:0.01, max:2,      step:0.01,hint:'Intrinsic growth rate'},
+      {id:'C0', label:'C₀ (initial)',      value:5,    min:1,    max:1000,   step:1,   hint:'Cases at t=0'},
+    ],
+    fn: (t, p) => {
+      const A = (p.K - p.C0) / Math.max(p.C0, 1e-6);
+      return Math.max(0, p.K / (1 + A * Math.exp(-p.r * t)));
+    },
+    presets: [
+      {label:'Small outbreak (K=500)', params:{K:500, r:0.3, C0:5}},
+      {label:'Large outbreak (K=5000)', params:{K:5000, r:0.25, C0:10}},
+      {label:'Fast growth (r=0.6)', params:{K:1000, r:0.6, C0:5}},
+    ],
+    keyQuantities: (p, inc, cum, t) => {
+      const tmPeak = Math.log((p.K - p.C0)/Math.max(p.C0,1e-6)) / p.r;
+      const peakInc = p.K * p.r / 4;
+      return [
+        {label:'K (final size)', value:p.K.toLocaleString(), sub:'Total epidemic size'},
+        {label:'Peak incidence', value:Math.round(peakInc).toLocaleString(), sub:'K·r/4 (at K/2)'},
+        {label:'Peak time t_m', value:tmPeak.toFixed(1)+' periods', sub:'Inflection at C = K/2'},
+        {label:'Growth rate r', value:p.r.toFixed(3), sub:'Per period'},
+      ];
+    },
+    interpret: (p, inc, cum, t) => {
+      const tmPeak = (Math.log((p.K-p.C0)/Math.max(p.C0,1e-6))/p.r).toFixed(1);
+      const peakInc = Math.round(p.K*p.r/4);
+      return [
+        `With K = ${p.K.toLocaleString()} and r = ${p.r}, the epidemic peaks at approximately <strong>${peakInc.toLocaleString()} new cases per period</strong> around time t = ${tmPeak}. The inflection always occurs at <strong>C = K/2 = ${(p.K/2).toLocaleString()}</strong> cumulative cases.`,
+        `The logistic model produces a <strong>perfectly symmetric</strong> incidence curve — the rise and decline are mirror images. In real outbreaks the decline is almost always slower than the rise, making logistic a conservative baseline. The Richards model adds an asymmetry parameter a to correct for this.`,
+        `Logistic growth assumes a homogeneous, closed population and a constant per-capita growth rate that declines linearly as cases approach K. It is most appropriate for single-wave outbreaks in small, well-mixed populations where the final size is known or estimable early.`
+      ];
+    }
+  },
+
+  richards: {
+    name: 'Richards Model',
+    desc: 'A generalization of the logistic model with asymmetry parameter a. When a=1 it reduces to logistic. Real outbreaks almost never have symmetric incidence curves — Richards captures the typical pattern of a faster rise and slower decline.',
+    nests: 'Nests Logistic (a=1)',
+    equations: 'C(t) = K · [1 + a · e^(−r·a·(t − t_m))]^(−1/a)<br><br>dC/dt = r · C · [1 − (C/K)^a]',
+    isCumulative: true,
+    params: [
+      {id:'K',  label:'K (final size)',    value:1000, min:10,   max:100000, step:10,  hint:'Total epidemic size'},
+      {id:'r',  label:'r (growth rate)',   value:0.3,  min:0.01, max:2,      step:0.01,hint:'Rate at inflection'},
+      {id:'tm', label:'t_m (peak time)',   value:20,   min:1,    max:200,    step:0.5, hint:'Time of peak incidence'},
+      {id:'a',  label:'a (asymmetry)',     value:1.0,  min:0.05, max:5,      step:0.05,hint:'a=1 → logistic; a<1 → fast rise'},
+    ],
+    fn: (t, p) => {
+      const as = Math.max(p.a, 0.01);
+      const inner = 1 + as * Math.exp(-p.r * as * (t - p.tm));
+      return Math.max(0, p.K / Math.pow(Math.max(inner, 1e-10), 1/as));
+    },
+    presets: [
+      {label:'Symmetric (a=1.0)', params:{K:1000, r:0.3, tm:20, a:1.0}},
+      {label:'Asymmetric — fast rise (a=0.5)', params:{K:1000, r:0.3, tm:15, a:0.5}},
+      {label:'Asymmetric — slow rise (a=2.0)', params:{K:1000, r:0.3, tm:25, a:2.0}},
+      {label:'Ebola-like (a=0.7)', params:{K:3300, r:0.25, tm:18, a:0.7}},
+    ],
+    keyQuantities: (p, inc, cum, t) => [
+      {label:'K (final size)', value:p.K.toLocaleString(), sub:'Total epidemic size'},
+      {label:'Asymmetry a', value:p.a.toFixed(2), sub:p.a<0.9?'Fast rise / slow decline':p.a>1.1?'Slow rise / fast decline':'≈ Symmetric'},
+      {label:'Peak time t_m', value:p.tm.toFixed(1)+' periods', sub:'Inflection of C(t)'},
+      {label:'Peak incidence', value:Math.round(Math.max(...inc)).toLocaleString(), sub:'Max new cases per period'},
+    ],
+    interpret: (p, inc, cum, t) => {
+      const asymDesc = p.a < 0.9 ? 'fast rise and a prolonged tail (typical of many infectious disease outbreaks)' :
+                       p.a > 1.1 ? 'slow initial rise followed by a faster decline (less common, but seen in some vaccine-affected outbreaks)' :
+                       'near-symmetric incidence curve (similar to logistic)';
+      return [
+        `With a = ${p.a}, the Richards model produces a <strong>${asymDesc}</strong>. The inflection of the cumulative curve occurs at t_m = ${p.tm}, which is also the time of peak incidence.`,
+        `The parameter a controls where the inflection falls relative to K: at a=1 (logistic) the inflection is at K/2; for a < 1 it occurs <em>below</em> K/2, producing the epidemic's faster rise; for a > 1 it occurs <em>above</em> K/2. The final epidemic size K = ${p.K.toLocaleString()} is reached asymptotically.`,
+        `Richards is the standard single-wave phenomenological model in epidemic forecasting. It nests the logistic as a special case and is the basis for Dr. Chowell's QuantDiffForecast toolbox (GRM with p fixed at 1). Compared to the GRM it has one fewer parameter, making it more identifiable with sparse data.`
+      ];
+    }
+  },
+
+  gompertz: {
+    name: 'Gompertz Model',
+    desc: 'An asymmetric S-shaped model where the inflection always occurs at C = K/e ≈ 0.368K — earlier than logistic (0.5K). Produces a naturally faster initial rise and longer tail. One fewer parameter than Richards but the inflection position is fixed.',
+    nests: null,
+    equations: 'C(t) = K · exp(−exp(−r·(t − t_m)))<br><br>dC/dt = r · C · ln(K/C)',
+    isCumulative: true,
+    params: [
+      {id:'K',  label:'K (final size)',    value:1000, min:10,   max:100000, step:10,  hint:'Total epidemic size'},
+      {id:'r',  label:'r (growth rate)',   value:0.3,  min:0.01, max:2,      step:0.01,hint:'Growth rate parameter'},
+      {id:'tm', label:'t_m (inflection)',  value:20,   min:1,    max:200,    step:0.5, hint:'Inflection always at C = K/e ≈ 0.368K'},
+    ],
+    fn: (t, p) => Math.max(0, p.K * Math.exp(-Math.exp(-p.r*(t-p.tm)))),
+    presets: [
+      {label:'Baseline', params:{K:1000, r:0.3, tm:20}},
+      {label:'Rapid outbreak (r=0.6)', params:{K:1000, r:0.6, tm:12}},
+      {label:'Slow outbreak (r=0.15)', params:{K:1000, r:0.15, tm:35}},
+    ],
+    keyQuantities: (p, inc, cum, t) => {
+      const inflectionC = p.K / Math.E;
+      return [
+        {label:'K (final size)', value:p.K.toLocaleString(), sub:'Total epidemic size'},
+        {label:'Inflection C', value:Math.round(inflectionC).toLocaleString(), sub:'Always K/e ≈ 0.368K'},
+        {label:'Peak time t_m', value:p.tm.toFixed(1)+' periods', sub:'Fixed inflection position'},
+        {label:'Peak incidence', value:Math.round(Math.max(...inc)).toLocaleString(), sub:'Max new cases per period'},
+      ];
+    },
+    interpret: (p, inc, cum, t) => [
+      `The Gompertz model always inflects at C = K/e ≈ ${Math.round(p.K/Math.E).toLocaleString()} — about <strong>36.8% of the final epidemic size</strong>, compared to 50% for the logistic. This naturally produces a faster early rise and longer tail, which matches many real outbreaks without requiring an extra parameter.`,
+      `The growth rate r = ${p.r} controls how steep the S-curve is. A higher r produces a sharper, more concentrated epidemic (higher peak, faster rise and decline); a lower r produces a more spread-out, flatter curve. Unlike Richards, the <em>position</em> of the inflection relative to K cannot be adjusted.`,
+      `Gompertz is a good parsimonious choice (3 parameters vs Richards' 4) when you expect the inflection near K/e and want to avoid the identifiability issues that can arise with Richards' a parameter on sparse data. It was originally developed for actuarial mortality modeling and has been widely applied to tumor growth and technology diffusion.`
+    ]
+  },
+
+  grm: {
+    name: 'Generalized Richards Model (GRM)',
+    desc: 'The most flexible single-wave phenomenological model — nests Richards (p=1), Logistic (p=1, a=1), and GGM (K→∞). Adds sub-exponential early growth via p and curve asymmetry via a, independently. Used in the QuantDiffForecast and ODEcast toolboxes.',
+    nests: 'Nests Richards (p=1), Logistic (p=1, a=1), GGM (K→∞)',
+    equations: 'I(t) = dC/dt evaluated at time t<br>dC/dt = r · C^p · [1 − (C/K)^a]',
+    isCumulative: false,
+    params: [
+      {id:'K',  label:'K (final size)',  value:7000, min:10,   max:200000, step:100, hint:'Total epidemic size'},
+      {id:'r',  label:'r (growth rate)', value:0.5,  min:0.01, max:5,      step:0.05,hint:'Growth rate constant'},
+      {id:'p',  label:'p (scaling)',     value:0.9,  min:0.01, max:1,      step:0.01,hint:'p=1 → Richards; p<1 → sub-exponential'},
+      {id:'a',  label:'a (asymmetry)',   value:1.2,  min:0.05, max:10,     step:0.05,hint:'a=1 → symmetric; a>1 → faster rise'},
+      {id:'I0', label:'I₀ (seed cases)', value:3,    min:1,    max:1000,   step:1,   hint:'Initial cumulative cases at t=0'},
+    ],
+    fn: (t, p) => {
+      const Ks=Math.max(p.K,1), ps=Math.max(0.01,Math.min(p.p,1.0)), as=Math.max(0.01,p.a), C0=Math.max(p.I0,1e-6);
+      function d(C){return p.r*Math.pow(Math.max(C,1e-10),ps)*(1-Math.pow(Math.min(C/Ks,1-1e-10),as));}
+      if(t<=0) return Math.max(0, d(C0));
+      const steps=30, h=t/steps; let C=C0;
+      for(let i=0;i<steps;i++){
+        const k1=d(C),k2=d(Math.max(C+h*k1/2,1e-10)),k3=d(Math.max(C+h*k2/2,1e-10)),k4=d(Math.max(C+h*k3,1e-10));
+        C=Math.max(C+h*(k1+2*k2+2*k3+k4)/6,1e-10); if(C>=Ks){C=Ks;break;}
+      }
+      return Math.max(0, d(C));
+    },
+    presets: [
+      {label:'Jalisco measles 2024 (r=0.51, p=0.91)', params:{K:7000, r:0.51, p:0.91, a:1.2, I0:3}},
+      {label:'Symmetric (p=1, a=1 → Richards/Logistic)', params:{K:1000, r:0.4, p:1.0, a:1.0, I0:5}},
+      {label:'Sub-exponential (p=0.7)', params:{K:5000, r:0.6, p:0.7, a:1.5, I0:10}},
+      {label:'Fast rise / long tail (a=3)', params:{K:2000, r:0.4, p:0.9, a:3.0, I0:5}},
+    ],
+    keyQuantities: (p, inc, cum, t) => {
+      const peakI = Math.max(...inc);
+      const peakT = t[inc.indexOf(peakI)];
+      const totalC = cum[cum.length-1];
+      return [
+        {label:'K (final size)', value:p.K.toLocaleString(), sub:'Carrying capacity'},
+        {label:'p (scaling)', value:p.p.toFixed(2), sub:p.p<0.8?'Sub-exponential':'Near-Richards'},
+        {label:'a (asymmetry)', value:p.a.toFixed(2), sub:p.a<0.9?'Fast rise':p.a>1.1?'Slow rise':'Symmetric'},
+        {label:'Peak incidence', value:Math.round(peakI).toLocaleString(), sub:`t = ${peakT}`},
+        {label:'Peak time', value:peakT+' periods', sub:'Time of max incidence'},
+        {label:'% K reached', value:(totalC/p.K*100).toFixed(1)+'%', sub:`C(${t[t.length-1]}) / K`},
+      ];
+    },
+    interpret: (p, inc, cum, t) => {
+      const peakI = Math.max(...inc);
+      const peakT = t[inc.indexOf(peakI)];
+      const pDesc = p.p < 0.8 ? `strongly sub-exponential early growth (p = ${p.p}) reflecting spatial heterogeneity or contact clustering` :
+                   p.p < 0.95 ? `mildly sub-exponential early growth (p = ${p.p})` :
+                   `near-Richards dynamics (p = ${p.p} ≈ 1)`;
+      const aDesc = p.a < 0.9 ? `a fast initial rise and prolonged tail (a = ${p.a} < 1)` :
+                   p.a > 1.1 ? `a slower rise followed by a steeper decline (a = ${p.a} > 1)` :
+                   `a near-symmetric bell curve (a = ${p.a} ≈ 1)`;
+      return [
+        `The GRM produces <strong>${pDesc}</strong> and <strong>${aDesc}</strong>. Peak incidence of <strong>${Math.round(peakI).toLocaleString()} cases per period</strong> occurs around t = ${peakT}.`,
+        `The two parameters p and a control <em>independent</em> aspects of the curve shape: p governs how fast growth accelerates in the early phase (before the inflection), while a governs the asymmetry of the bell curve around the peak. This separation is what makes GRM more flexible than Richards (fixed p=1) or Logistic (p=1, a=1).`,
+        `The GRM is the basis of Dr. Chowell's QuantDiffForecast toolbox and your ODEcast toolbox. It is recommended for publication-quality single-wave incidence forecasting. Note that r, p, a, and K are correlated — well-identified estimates require ≥15–20 data points and informed starting values. For fitting to data, use the <a href="phenomenological.html">Phenomenological fitting tool</a>.`
+      ];
+    }
+  }
 };
 
-/* ── Model pills ── */
-const mpEl=document.getElementById('modelPills');
-Models.phenomenological.forEach(m=>{
-  const btn=document.createElement('button');
-  btn.className='pill-btn'+(m.id===currentModel?' active':'');
-  btn.textContent=m.name;
-  btn.onclick=()=>{document.querySelectorAll('#modelPills .pill-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');currentModel=m.id;showModelDef(m.id);};
-  mpEl.appendChild(btn);
-});
+/* ═══════════════════════════════════════
+   STATE
+═══════════════════════════════════════ */
+let currentModelId = 'logistic';
 
-function setLoss(l,btn){currentLoss=l;document.querySelectorAll('#lossPills .pill-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('lossNote').textContent=lossNotes[l];}
-
-function updateLabels(){
-  const u=document.getElementById('timeUnit').value;
-  const map={weekly:'weekly periods ahead',daily:'daily periods ahead',monthly:'monthly periods ahead',yearly:'yearly periods ahead'};
-  const s={weekly:'week',daily:'day',monthly:'month',yearly:'year'};
-  document.getElementById('forecastHLabel').textContent=map[u]||'periods ahead';
-  document.getElementById('fitStartUnit').textContent=s[u]||'period';
-  document.getElementById('fitEndUnit').textContent=s[u]||'period';
-  updateSplitInfo();
+/* ═══════════════════════════════════════
+   BUILD UI
+═══════════════════════════════════════ */
+function setModel(id, btn) {
+  currentModelId = id;
+  document.querySelectorAll('#modelPills .pill-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  buildUI(id);
+  document.getElementById('resultsArea').style.display='none';
+  document.getElementById('simStatus').textContent='';
 }
 
-function getSplit(){
-  const allObs=Core.parseData(document.getElementById('dataInput').value);
-  const n=allObs.length;
-  const start=Math.max(1,parseInt(document.getElementById('fitStart').value)||1);
-  const end=Math.min(n,parseInt(document.getElementById('fitEnd').value)||n);
-  const horizon=Math.max(0,parseInt(document.getElementById('forecastH').value)||0);
-  const trainObs=allObs.slice(start-1,end);
-  const testStart=end;
-  const testEnd=Math.min(n,end+horizon);
-  const testObs=allObs.slice(testStart,testEnd);
-  const hasTest=testObs.length>0&&horizon>0;
-  const futureHorizon=Math.max(0,horizon-testObs.length);
-  return{allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon,testStart,testEnd};
+function buildUI(id) {
+  const m = MODELS[id];
+  const nestBadge = m.nests ? `<span class="nest-badge">${m.nests}</span>` : '';
+  document.getElementById('modelDescription').innerHTML = m.desc + nestBadge;
+
+  // Presets
+  document.getElementById('presetGrid').innerHTML = m.presets.map((pr,i)=>
+    `<button class="preset-btn" onclick="applyPreset(${i})">${pr.label}</button>`
+  ).join('');
+
+  // Param cards
+  document.getElementById('paramGrid').innerHTML = m.params.map(par=>`
+    <div class="param-card">
+      <label>${par.label}</label>
+      <input type="number" id="p_${par.id}" value="${par.value}" min="${par.min}" max="${par.max}" step="${par.step}" oninput="syncSlider('${par.id}')">
+      <input type="range"  id="s_${par.id}" value="${par.value}" min="${par.min}" max="${par.max}" step="${par.step}" oninput="syncNum('${par.id}')">
+      <div class="param-hint">${par.hint}</div>
+    </div>`
+  ).join('');
 }
 
-function updateSplitInfo(){
-  const{allObs,n,start,end,horizon,trainObs,testObs,hasTest,futureHorizon}=getSplit();
-  const u=document.getElementById('timeUnit').value.replace('ly','');
-  if(n<2){document.getElementById('splitInfo').textContent='Enter data to see split info.';return;}
-  let msg=`<strong>Training:</strong> ${trainObs.length} ${u}s (periods ${start}–${end}) &nbsp;·&nbsp; `;
-  if(horizon>0){
-    msg+=`<strong>Forecast:</strong> ${horizon} ${u}s ahead &nbsp;·&nbsp; `;
-    msg+=hasTest
-      ?`<strong>Hold-out observed:</strong> ${testObs.length} ${u}s ✓ — forecast metrics will be computed${futureHorizon>0?` · ${futureHorizon} ${u}s beyond data`:''}`
-      :'<strong>No hold-out data</strong> — forecast only, no evaluation metrics';
-  } else {
-    msg+=`No forecast — full training window only`;
-  }
-  document.getElementById('splitInfo').innerHTML=msg;
+function syncSlider(id) {
+  const num = document.getElementById('p_'+id);
+  const sld = document.getElementById('s_'+id);
+  if(sld) sld.value = num.value;
+}
+function syncNum(id) {
+  const num = document.getElementById('p_'+id);
+  const sld = document.getElementById('s_'+id);
+  if(num) num.value = sld.value;
 }
 
-function loadDataset(key,btn){
-  document.querySelectorAll('#datasetPills .pill-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
-  if(key==='custom'){document.getElementById('dataInput').value='';document.getElementById('dataInput').focus();return;}
-  const ds=Models.defaultDatasets[key];if(!ds)return;
-  document.getElementById('dataInput').value=ds.data.join(', ');
-  document.getElementById('diseaseName').value=ds.disease;
-  document.getElementById('placeName').value=ds.place;
-  document.getElementById('timeUnit').value=ds.unit;
-  document.getElementById('dataType').value=ds.type||'cumulative';
-  const n=ds.data.length;
-  const trainEnd=Math.max(4,Math.floor(n*0.8));
-  document.getElementById('fitStart').value=1;
-  document.getElementById('fitEnd').value=trainEnd;
-  document.getElementById('forecastH').value=n-trainEnd;
-  updateLabels();
+function applyPreset(i) {
+  const m = MODELS[currentModelId];
+  const pr = m.presets[i];
+  Object.entries(pr.params).forEach(([k,v]) => {
+    const n = document.getElementById('p_'+k);
+    const s = document.getElementById('s_'+k);
+    if(n) n.value = v;
+    if(s) s.value = v;
+  });
+  if(pr.duration) document.getElementById('simDuration').value = pr.duration;
+  runSim();
 }
 
-function showModelDef(id){
-  const m=Models.phenomenological.find(x=>x.id===id);if(!m)return;
-  // Show/hide GRM init panel
-  document.getElementById('grmInitPanel').style.display = id==='grm' ? 'block' : 'none';
-  // Auto-set K0 placeholder from current data when GRM selected
-  if(id==='grm'){
-    const split=getSplit();
-    const firstNZ=split.trainObs?split.trainObs.findIndex(v=>v>0):-1;
-    const fitObs=firstNZ>0?split.trainObs.slice(firstNZ):split.trainObs;
-    const autoK=fitObs&&fitObs.length?Math.round(fitObs.reduce((a,b)=>a+b,0)*1.3):0;
-    if(autoK>0) document.getElementById('grm_K0').placeholder='auto ('+autoK.toLocaleString()+')';
-  }
-  document.getElementById('modelDefCard').style.display='block';
-  document.getElementById('modelDefLabel').textContent=m.name+' model';
-  const twoWaveWarning=m.twoWave
-    ?`<div class="warn-box" style="margin-top:0.75rem">⚠ <strong>Two-wave model — read before fitting:</strong> Requires both waves to be at least partially visible in the training window. If the second wave has not yet begun, its parameters are unidentifiable and forecasts will be unreliable. Minimum recommended training length: 20 data points. Bootstrap is slower with 8 parameters — consider 100–150 iterations.</div>`
-    :'';
-  document.getElementById('modelDefContent').innerHTML=`<div class="concept-box">
-    <div class="cb-definition"><strong>Definition</strong>${m.definition}</div>
-    <div class="cb-interpretation"><strong>Equations</strong>
-      <div class="equation-box" style="margin-top:8px"><div class="eq-label">Growth form</div>${m.equationDisplay}</div>
-      <div class="equation-box" style="margin-top:6px"><div class="eq-label">Differential equation</div>${m.deDisplay}</div>
-    </div>
-    <div class="cb-sowhat">${m.strengths.map(s=>'✓ '+s).join(' · ')}</div>
-  </div>
-  ${twoWaveWarning}
-  <table class="param-table" style="margin-top:0.75rem">
-    <thead><tr><th>Parameter</th><th>Symbol</th><th>Description</th></tr></thead>
-    <tbody>${m.params.map((p,i)=>`<tr><td class="p-name">${m.paramNames[i]}</td><td>${p}</td><td class="p-desc">${m.paramDescriptions[i]}</td></tr>`).join('')}</tbody>
-  </table>
-  <div class="warn-box" style="margin-top:0.75rem">⚠ Limitations: ${m.limitations.join(' · ')}</div>`;
+function getParams() {
+  const m = MODELS[currentModelId];
+  const p = {};
+  m.params.forEach(par => {
+    p[par.id] = parseFloat(document.getElementById('p_'+par.id).value) || par.value;
+  });
+  return p;
 }
 
-function getLossFn(model,t,obs){
-  const constraint=model.lossConstraint||null;
-  const wrap=(baseFn)=>constraint
-    ?(params=>constraint(params)?baseFn(params):1e15)
-    :baseFn;
-  if(currentLoss==='poisson')return wrap(Models.poissonLoss(model.fn,t,obs));
-  if(currentLoss==='nb')return wrap(Models.nbLossProfiled(model.fn,t,obs));
-  return wrap(Models.sseLoss(model.fn,t,obs));
-}
-function getLossFnBuilder(){
-  if(currentLoss==='poisson')return(fn,t,obs,th)=>Models.poissonLoss(fn,t,obs);
-  if(currentLoss==='nb')return(fn,t,obs,th)=>Models.nbLossProfiled(fn,t,obs);
-  return(fn,t,obs,th)=>Models.sseLoss(fn,t,obs);
-}
+/* ═══════════════════════════════════════
+   SIMULATION
+═══════════════════════════════════════ */
+function runSim() {
+  const m = MODELS[currentModelId];
+  const p = getParams();
+  const duration = parseInt(document.getElementById('simDuration').value) || 40;
+  const showType = document.getElementById('showType').value;
 
-function runFit(){
-  const split=getSplit();
-  const{trainObs,testObs,hasTest,horizon,start,end,testStart,testEnd,allObs}=split;
-  if(trainObs.length<4){document.getElementById('fitStatus').textContent='Need at least 4 training points.';return;}
-  const model=Models.phenomenological.find(m=>m.id===currentModel);if(!model)return;
-  if(model.twoWave&&trainObs.length<20){document.getElementById('fitStatus').textContent='⚠ Two-Wave Richards needs at least 20 training points with both waves visible. Add more data or switch to a single-wave model.';document.getElementById('fitBtn').disabled=false;document.getElementById('compareBtn').disabled=false;return;}
-  document.getElementById('fitBtn').disabled=true;
-  document.getElementById('compareBtn').disabled=true;
-  document.getElementById('fitStatus').textContent='Fitting…';
+  document.getElementById('simStatus').textContent = 'Simulating…';
 
-  setTimeout(()=>{
-    try{
-      // Strip leading zeros before fitting — models initialise poorly when the
-      // series starts at zero. Fit on the non-zero suffix; predict back on the
-      // full window (leading zeros get near-zero predictions naturally).
-      const firstNonZero=trainObs.findIndex(v=>v>0);
-      const fitObs=firstNonZero>0 ? trainObs.slice(firstNonZero) : trainObs;
-      const tOffset=Math.max(0,firstNonZero);
-      const t=fitObs.map((_,i)=>i);
+  setTimeout(() => {
+    try {
+      const steps = duration * 10;
+      const t = Array.from({length:steps+1}, (_,i) => parseFloat((i*duration/steps).toFixed(2)));
 
-      // Two-wave guard: warn if second wave not detectable in training data
-      if(model.twoWave){
-        const n=fitObs.length;
-        const p1=fitObs.indexOf(Math.max(...fitObs.slice(0,Math.floor(n*0.6))));
-        let tr=p1;
-        for(let i=p1+1;i<n-2;i++){if(fitObs[i]<fitObs[tr])tr=i;else if(fitObs[i]>fitObs[tr]*1.1)break;}
-        const wave2Signal=fitObs.slice(tr).some((v,i,a)=>i>2&&v>a[0]*1.2);
-        if(!wave2Signal){
-          document.getElementById('fitStatus').textContent='⚠ Warning: second wave not detectable in training window — two-wave fit unreliable.';
-        }
-      }
+      // Compute curve
+      let cumArr, incArr;
 
-      // For GRM: fix I0 to first observation (matching MATLAB fixI0=1).
-      // Wrap model.fn in a closure so the optimizer never sees I0 as a parameter.
-      const activeModel = model.id === 'grm'
-        ? (() => {
-            // Read user-supplied init values — fall back to auto if blank
-            const r0 = parseFloat(document.getElementById('grm_r0').value) || 0.5;
-            const p0 = parseFloat(document.getElementById('grm_p0').value) || 0.9;
-            const a0 = parseFloat(document.getElementById('grm_a0').value) || 1.0;
-            const K0raw = document.getElementById('grm_K0').value.trim();
-            const K0 = K0raw ? parseFloat(K0raw) : Math.max(fitObs.reduce((a,b)=>a+b,0)*1.3, 10);
-            const I0 = Math.max(fitObs[0], 1);
-            const grmFn = (t, params) => {
-              const [K, r, p, a] = params;
-              const Ks=Math.max(K,1),ps=Math.max(0.01,Math.min(p,1.0)),as=Math.max(0.01,a),C0=I0;
-              function d(C){return r*Math.pow(Math.max(C,1e-10),ps)*(1-Math.pow(Math.min(C/Ks,1-1e-10),as));}
-              if(t<=0)return Math.max(0,d(C0));
-              const steps=Math.max(400,Math.ceil(t*40)),h=t/steps;let C=C0;
-              for(let i=0;i<steps;i++){
-                const k1=d(C),k2=d(Math.max(C+h*k1/2,1e-10)),k3=d(Math.max(C+h*k2/2,1e-10)),k4=d(Math.max(C+h*k3,1e-10));
-                C=Math.max(C+h*(k1+2*k2+2*k3+k4)/6,1e-10);if(C>=Ks){C=Ks;break;}
-              }
-              return Math.max(0,d(C));
-            };
-            return { ...model, _I0: I0, fn: grmFn,
-              init: () => [K0, r0, p0, a0] };
-          })()
-        : model;
-
-      const lf=getLossFn(activeModel,t,fitObs);
-
-      let res;
-      if(model.id==='grm' && currentLoss!=='sse'){
-        // Two-stage fit for GRM matching MATLAB approach:
-        // Stage 1: SSE to find the correct parameter basin (avoids NB peak-weighting trap)
-        // Stage 2: MLE (Poisson or NB) starting from SSE solution to refine
-        const sseLf=Models.sseLoss(activeModel.fn,t,fitObs);
-        const sseConstraint=activeModel.lossConstraint;
-        const sseLfConstrained=sseConstraint?(p=>sseConstraint(p)?sseLf(p):1e15):sseLf;
-        const stage1=Optimizer.fitModel(sseLfConstrained,activeModel.init(fitObs),{maxIter:8000,tol:1e-12,nRestarts:4});
-        res=Optimizer.fitModel(lf,stage1.params,{maxIter:5000,tol:1e-12,nRestarts:2});
+      if (m.isCumulative) {
+        // fn returns cumulative C(t); incidence = diff
+        cumArr = t.map(ti => m.fn(ti, p));
+        incArr = cumArr.map((v,i) => i===0 ? Math.max(0, cumArr[1]-cumArr[0]) : Math.max(0, v - cumArr[i-1]));
       } else {
-        res=Optimizer.fitModel(lf,activeModel.init(fitObs),{maxIter:8000,tol:1e-12});
+        // fn returns incidence directly; cumulative = running sum
+        incArr = t.map(ti => m.fn(ti, p));
+        cumArr = [];
+        let cum = 0;
+        incArr.forEach(v => { cum += v * (duration/steps); cumArr.push(cum); });
       }
 
-      // Predict on full training window
-      const fullT=trainObs.map((_,i)=>i-tOffset);
-      const trainPred=fullT.map(ti=>Math.max(0,activeModel.fn(ti,res.params)));
-      const forecastT=Array.from({length:horizon},(_,i)=>t.length+i);
-      const forecastPred=forecastT.map(ti=>Math.max(0,activeModel.fn(ti,res.params)));
-      const testPred=forecastPred.slice(0,testObs.length);
+      // Thin for display (max 400 points)
+      const thin = Math.max(1, Math.floor(t.length/400));
+      const tD   = t.filter((_,i)=>i%thin===0);
+      const incD = incArr.filter((_,i)=>i%thin===0);
+      const cumD = cumArr.filter((_,i)=>i%thin===0);
 
-      const ctx={model:activeModel,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,
-        horizon,forecastT,forecastPred,params:res.params,start,end,testStart,testEnd,
-        futureHorizon:split.futureHorizon};
-      lastCtx=ctx;
+      document.getElementById('simStatus').textContent = `Done — ${tD.length} time points`;
+      document.getElementById('resultsArea').style.display = 'block';
 
-      const nBoot=parseInt(document.getElementById('bootN').value)||0;
-      if(nBoot>0){
-        document.getElementById('fitStatus').textContent='Fitted ✓ — running bootstrap…';
-        document.getElementById('progressWrap').style.display='block';
-        runBootstrapAuto(activeModel,fitObs,t,res.params,nBoot,ctx,()=>{
-          document.getElementById('fitBtn').disabled=false;
-          document.getElementById('compareBtn').disabled=false;
-          document.getElementById('progressWrap').style.display='none';
-          document.getElementById('progressLabel').textContent='';
-        });
-      } else {
-        document.getElementById('fitStatus').textContent='Fitted ✓';
-        document.getElementById('fitBtn').disabled=false;
-        document.getElementById('compareBtn').disabled=false;
-        showResults(ctx);
-        showModelDef(currentModel);
-      }
-    }catch(e){
-      document.getElementById('fitStatus').textContent='Fit failed — try a different model or adjust training window.';
-      document.getElementById('fitBtn').disabled=false;
-      document.getElementById('compareBtn').disabled=false;
+      plotResults(tD, incD, cumD, m, p, showType);
+      showKeyQuantities(m, incD, cumD, tD, p);
+      showInterpretation(m, incD, cumD, tD, p);
+      showEquations(m);
+    } catch(e) {
+      document.getElementById('simStatus').textContent = 'Simulation failed — ' + e.message;
       console.error(e);
     }
-  },10);
+  }, 10);
 }
 
-async function runBootstrapAuto(model,obs,t,params,nBoot,ctx,onDone){
-  const constraint=model.lossConstraint||null;
-  // For GRM: pass SSE loss builder for stage-1 basin-finding in each bootstrap iteration
-  const sseLfBuilder = model.id==='grm' ? ((fn,t,obs)=>Models.sseLoss(fn,t,obs)) : null;
-  const bootResult=await Optimizer.bootstrap(
-    model.fn,getLossFnBuilder(),t,obs,params,nBoot,currentLoss,2,
-    (p)=>{
-      document.getElementById('progressBar').style.width=(p*100)+'%';
-      document.getElementById('progressLabel').textContent=`Bootstrap: ${Math.round(p*nBoot)}/${nBoot} iterations…`;
-    },
-    constraint,
-    model.isCumulative===true,
-    sseLfBuilder
-  );
-    document.getElementById('progressBar').style.width='100%';
-    if(bootResult){
-      document.getElementById('fitStatus').textContent=`Fitted ✓ with ${bootResult.nBoot}-iteration bootstrap CIs`;
-      // attach forecast CIs from bootstrap
-      if(ctx.horizon>0&&bootResult.bootParams){
-        // For cumulative models the lower CI bound can never fall below the last
-        // observed value — cumulative counts are monotonically non-decreasing.
-        const cumulFloor=model.isCumulative
-          ? Math.max(0, ctx.trainObs[ctx.trainObs.length-1])
-          : 0;
-        bootResult.forecastCI=Array.from({length:ctx.testObs.length},(_,i)=>{
-          const ti=t.length+i;
-          const vals=bootResult.bootParams.map(bp=>model.fn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
-          const lo=Math.max(cumulFloor, vals[Math.floor(0.025*vals.length)]||0);
-          const hi=Math.max(lo, vals[Math.floor(0.975*vals.length)]||0);
-          return{lo, hi};
-        });
-        // full forecast PI (training + forecast horizon)
-        bootResult.fullForecastCI=ctx.forecastT.map((ti,i)=>{
-          const vals=bootResult.bootParams.map(bp=>model.fn(ti,bp)).filter(isFinite).sort((a,b)=>a-b);
-          // floor rises with each forecast step for cumulative: use previous hi as minimum anchor
-          const lo=Math.max(cumulFloor, vals[Math.floor(0.025*vals.length)]||0);
-          const hi=Math.max(lo, vals[Math.floor(0.975*vals.length)]||0);
-          return{lo, hi};
-        });
-      }
-      showResults(ctx,bootResult);
-      showBootstrapPanel(model,params,bootResult);
-    } else {
-      document.getElementById('fitStatus').textContent='Fitted ✓ — bootstrap failed (model may be unidentifiable with this data)';
-      showResults(ctx);
-    }
-    showModelDef(model.id);
-    onDone();
-}
+/* ═══════════════════════════════════════
+   PLOTTING
+═══════════════════════════════════════ */
+const COLORS = {inc:'#D85A30', cum:'#378ADD', inc2:'#1D9E75'};
 
-function showBootstrapPanel(model,params,bootResult){
-  document.getElementById('bootCard').style.display='block';
-  document.getElementById('bootSummary').innerHTML=`
-    <table class="param-table" style="margin-bottom:12px">
-      <thead><tr><th>Parameter</th><th>Estimate</th><th>95% CI lower</th><th>95% CI upper</th><th>CI width</th></tr></thead>
-      <tbody>${model.params.map((p,i)=>`<tr>
-        <td class="p-name">${model.paramNames[i]}</td>
-        <td>${Core.fmt(params[i],4)}</td>
-        <td>${Core.fmt(bootResult.paramCI[i].lo,4)}</td>
-        <td>${Core.fmt(bootResult.paramCI[i].hi,4)}</td>
-        <td>${Core.fmt(bootResult.paramCI[i].hi-bootResult.paramCI[i].lo,4)}</td>
-      </tr>`).join('')}</tbody>
-    </table>`;
-  const histEl=document.getElementById('paramHistograms');histEl.innerHTML='';
-  model.params.forEach((p,i)=>{
-    const div=document.createElement('div');
-    div.style.cssText='background:var(--bg-secondary);border-radius:8px;padding:8px;min-width:0;overflow:hidden';
-    div.innerHTML=`<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">${model.paramNames[i]}</div><div id="hist_${i}" style="height:180px;min-width:0"></div>`;
-    histEl.appendChild(div);
-    const samples=bootResult.paramCI[i].samples,est=params[i];
-    Plotly.newPlot(`hist_${i}`,[
-      {x:samples,type:'histogram',nbinsx:30,marker:{color:'rgba(24,95,165,0.5)',line:{color:'rgba(24,95,165,0.8)',width:0.5}}},
-      {x:[est,est],y:[0,samples.length*0.15],type:'scatter',mode:'lines',line:{color:'#E05C2A',width:2,dash:'dash'},showlegend:false}
-    ],{paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{family:'DM Sans',size:10,color:'#5a5a56'},
-      xaxis:{gridcolor:'rgba(0,0,0,0.05)',zeroline:false,automargin:true},
-      yaxis:{title:'Count',gridcolor:'rgba(0,0,0,0.05)',zeroline:false},
-      autosize:true,
-      showlegend:false,margin:{t:5,r:10,b:40,l:45}},{responsive:true,displayModeBar:false});
-  });
-}
+function plotResults(t, inc, cum, m, p, showType) {
+  const traces = [];
 
-function showResults(ctx,bootResult=null){
-  const{model,allObs,trainObs,t,trainPred,testObs,testPred,hasTest,horizon,forecastT,forecastPred,params,start,end,testStart,testEnd}=ctx;
-  const S=Core;
-  const disease=document.getElementById('diseaseName').value||'Disease';
-  const place=document.getElementById('placeName').value||'Location';
-  const unit=document.getElementById('timeUnit').value;
-  const unitLabel=unit.replace('ly','');
-  const objLabel=currentLoss==='sse'?'LSQ':currentLoss==='poisson'?'Poisson GLM':'NB GLM';
-
-  document.getElementById('resultsArea').style.display='block';
-  document.getElementById('chartLabel').textContent=`${model.name} — ${disease}, ${place} (${objLabel})`;
-
-  const allLabels=S.timeLabels(allObs.length,unit);
-  const trainLabels=allLabels.slice(start-1,end);
-  const testLabels=allLabels.slice(testStart,Math.min(allObs.length,testStart+testObs.length));
-  const foreLabels=S.timeLabels(t.length+horizon,unit).slice(t.length);
-
-  const traces=[];
-
-  // bootstrap CI band on training
-  if(bootResult&&bootResult.predCI){
+  if (showType==='incidence' || showType==='both') {
     traces.push({
-      x:[...trainLabels,...trainLabels.slice().reverse()],
-      y:[...bootResult.predCI.map(c=>c.hi),...bootResult.predCI.map(c=>c.lo).reverse()],
-      fill:'toself',fillcolor:'rgba(24,95,165,0.1)',line:{color:'transparent'},
-      name:'95% CI (bootstrap)',type:'scatter'
+      x:t, y:inc, mode:'lines', name:'Incidence (new cases)',
+      line:{color:COLORS.inc, width:2.5}
     });
   }
-
-  // bootstrap forecast PI band
-  if(bootResult&&bootResult.fullForecastCI&&horizon>0){
+  if (showType==='cumulative' || showType==='both') {
     traces.push({
-      x:[...foreLabels,...foreLabels.slice().reverse()],
-      y:[...bootResult.fullForecastCI.map(c=>c.hi),...bootResult.fullForecastCI.map(c=>c.lo).reverse()],
-      fill:'toself',fillcolor:'rgba(224,92,42,0.1)',line:{color:'transparent'},
-      name:'Forecast 95% PI',type:'scatter'
+      x:t, y:cum, mode:'lines', name:'Cumulative cases',
+      line:{color:COLORS.cum, width:2.5, dash:showType==='both'?'dash':'solid'},
+      yaxis: showType==='both' ? 'y2' : 'y'
     });
   }
 
-  // all observed (grey background)
-  traces.push({x:allLabels,y:allObs,mode:'markers',name:'All observed',marker:{color:'rgba(90,90,86,0.2)',size:5},type:'scatter'});
-  // training observed
-  traces.push({x:trainLabels,y:trainObs,mode:'markers',name:'Training',marker:{color:'var(--accent)',size:7},type:'scatter'});
-  // training fit
-  traces.push({x:trainLabels,y:trainPred,mode:'lines',name:`${model.name} fit`,line:{color:'#E05C2A',width:2.5},type:'scatter'});
-  // forecast (dashed)
-  if(horizon>0){
-    traces.push({x:foreLabels,y:forecastPred,mode:'lines',name:'Forecast',line:{color:'#E05C2A',width:2,dash:'dash'},type:'scatter'});
-  }
-  // hold-out observed (green diamonds)
-  if(hasTest&&testObs.length>0){
-    traces.push({x:testLabels,y:testObs,mode:'markers',name:'Hold-out observed',marker:{color:'#0A5C36',size:9,symbol:'diamond'},type:'scatter'});
+  const layout = {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
+    xaxis:{title:'Time (periods)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
+    yaxis:{title: showType==='cumulative'?'Cumulative cases':'New cases per period', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
+    legend:{orientation:'h', y:-0.2},
+    margin:{t:30, r:showType==='both'?70:20, b:70, l:70}
+  };
+
+  if (showType==='both') {
+    layout.yaxis2={title:'Cumulative cases', overlaying:'y', side:'right', gridcolor:'transparent', zeroline:false};
   }
 
-  const shapes=horizon>0?[{type:'line',x0:trainLabels[trainLabels.length-1],x1:trainLabels[trainLabels.length-1],y0:0,y1:1,yref:'paper',line:{color:'rgba(0,0,0,0.2)',dash:'dot',width:1.5}}]:[];
+  const titleStr = `${m.name}${p.K?' — K='+p.K.toLocaleString():''}${p.r?', r='+p.r:''}${p.p&&p.p!==1?', p='+p.p:''}${p.a&&p.a!==1?', a='+p.a:''}`;
+  document.getElementById('chartTitle').textContent = titleStr;
 
-  Plotly.newPlot('fitChart',traces,{
-    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
-    font:{family:'DM Sans',size:12,color:'#5a5a56'},
-    xaxis:{title:`Time (${unit})`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
-    yaxis:{title:`${disease} cases`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
-    legend:{orientation:'h',y:-0.25},shapes,
-    margin:{t:20,r:20,b:80,l:60}
-  },{responsive:true,displayModeBar:false});
-
-  document.getElementById('chartLegendNote').innerHTML=
-    `<span class="split-badge train">Training: periods ${start}–${end}</span>`+
-    (horizon>0?`<span class="split-badge future">Forecast: +${horizon} ${unitLabel}s</span>`:'') +
-    (hasTest?`<span class="split-badge test">Hold-out: ${testObs.length} observed</span>`:'');
-
-  // Parameters
-  let paramRows=model.params.map((p,i)=>{
-    const ci=bootResult?` <span style="font-size:11px;color:var(--text-tertiary)">[${S.fmt(bootResult.paramCI[i].lo,3)}, ${S.fmt(bootResult.paramCI[i].hi,3)}]</span>`:'';
-    return`<tr><td class="p-name">${model.paramNames[i]}</td><td>${S.fmt(params[i],4)}${ci}</td><td class="p-desc">${model.paramDescriptions[i]}</td></tr>`;
-  }).join('');
-  if(model.doublingTime&&model.doublingTime(params)){
-    paramRows+=`<tr><td class="p-name">Doubling time</td><td>${S.fmt(model.doublingTime(params),2)} ${unitLabel}s</td><td class="p-desc">ln(2)/r — time for cases to double in exponential phase</td></tr>`;
-  }
-  document.getElementById('paramResults').innerHTML=`
-    <table class="param-table"><thead><tr><th>Parameter</th><th>Estimate${bootResult?' (95% CI)':''}</th><th>Description</th></tr></thead><tbody>${paramRows}</tbody></table>
-    <p style="font-size:12px;color:var(--text-tertiary);margin-top:6px">${bootResult?`95% CI from ${bootResult.nBoot}-iteration parametric bootstrap.`:'No bootstrap — set iterations > 0 to get CIs.'}</p>`;
-
-  // Training metrics
-  const k=model.params.length;
-  const mae_v=S.mae(trainObs,trainPred),rmse_v=S.rmse(trainObs,trainPred);
-  const mape_v=S.mape(trainObs,trainPred),r2_v=S.rSquared(trainObs,trainPred);
-  const aic_v=S.aic(trainObs,trainPred,k),bic_v=S.bic(trainObs,trainPred,k);
-  document.getElementById('metricsResults').innerHTML=
-    S.fullMetricCard('rmse',S.fmt2(rmse_v),`Training RMSE = <strong>${S.fmt2(rmse_v)}</strong> cases per ${unitLabel} (${disease}, ${place}).`)+
-    S.fullMetricCard('mae',S.fmt2(mae_v),`Training MAE = <strong>${S.fmt2(mae_v)}</strong> — typical absolute error in training period.`)+
-    S.fullMetricCard('mape',mape_v!==null?S.fmt2(mape_v)+'%':'—',mape_v!==null?`Training MAPE = <strong>${S.fmt2(mape_v)}%</strong>.`:'Undefined (zeros in data).')+
-    S.fullMetricCard('r2',S.fmt(r2_v,4),`Training R² = <strong>${S.fmt(r2_v,4)}</strong>. High R² does not guarantee good forecast performance.`)+
-    S.fullMetricCard('aic',S.fmt2(aic_v),`AIC = <strong>${S.fmt2(aic_v)}</strong> (${k} parameters). Use for model selection on same training window.`)+
-    S.fullMetricCard('bic',S.fmt2(bic_v),`BIC = <strong>${S.fmt2(bic_v)}</strong>.`);
-
-  // Forecast evaluation
-  if(hasTest&&testObs.length>0&&testPred.length>0){
-    document.getElementById('forecastEvalCard').style.display='block';
-    document.getElementById('noTestDataNote').style.display='none';
-    const f_mae=S.mae(testObs,testPred),f_rmse=S.rmse(testObs,testPred);
-    const f_mape=S.mape(testObs,testPred);
-    const bias=testObs.reduce((s,o,i)=>s+(testPred[i]-o),0)/testObs.length;
-    const ratio=rmse_v>0?f_rmse/rmse_v:null;
-    document.getElementById('forecastMetrics').innerHTML=
-      S.fullMetricCard('rmse',S.fmt2(f_rmse),
-        `Forecast RMSE = <strong>${S.fmt2(f_rmse)}</strong> over ${testObs.length} hold-out ${unitLabel}s.`+
-        (ratio?` Forecast RMSE is <strong>${S.fmt2(ratio)}×</strong> the training RMSE — ${ratio<1.5?'excellent, forecasts match in-sample fit':ratio<3?'moderate degradation, typical for epidemic forecasting':'large degradation, possible overfitting'}.`:''  ))+
-      S.fullMetricCard('mae',S.fmt2(f_mae),`Forecast MAE = <strong>${S.fmt2(f_mae)}</strong>. Average absolute forecast error over hold-out window.`)+
-      S.fullMetricCard('mape',f_mape!==null?S.fmt2(f_mape)+'%':'—',f_mape!==null?`Forecast MAPE = <strong>${S.fmt2(f_mape)}%</strong>.`:'Undefined (zeros in hold-out data).')+
-      `<div class="concept-box" style="margin-top:0.75rem">
-        <div class="cb-definition"><strong>Mean forecast bias</strong>Systematic over- or under-prediction. Bias = mean(forecast − observed). Positive = overprediction; negative = underprediction.</div>
-        <div class="cb-interpretation"><strong>Your result</strong>Bias = <strong>${S.fmt2(bias)}</strong> ${unitLabel}ly cases. ${Math.abs(bias)<f_rmse*0.3?'Low bias — forecasts are approximately unbiased.':bias>0?'Positive bias — model overpredicts in the forecast window. Common when epidemic declines faster than the fitted curve.':'Negative bias — model underpredicts. Common near epidemic peaks when growth is decelerating.'}</div>
-        <div class="cb-sowhat">${(()=>{
-          const suggestions={
-            exponential:'Exponential growth cannot capture deceleration — it will always overpredict once the epidemic slows. Try GGM (adds sub-exponential scaling), Logistic, or Richards.',
-            ggm:'GGM has no carrying capacity — it will always overpredict once the epidemic peaks or decelerates toward saturation. Try Logistic, Richards, or GRM if you have data past the inflection.',
-            logistic:'Logistic assumes a symmetric curve (inflection always at K/2). If the epidemic declines faster or slower than it rose, try Richards or GRM — both add asymmetry.',
-            richards:'Richards is flexible but p is fixed at 1. If early-phase sub-exponential growth is suspected, try GRM. If you see a second wave in your data, try Two-Wave Richards.',
-            gompertz:'Gompertz has a fixed inflection at K/e ≈ 0.368K which may not match this trajectory. Try Richards (flexible inflection) or GRM (also controls early growth scaling).',
-            grm:'GRM is the most flexible single-wave model here. If bias is still high, consider whether this is a multi-wave epidemic — if so, try Two-Wave Richards.',
-            two_wave:'Two-Wave Richards overpredicts the decline when the second wave has not yet peaked in the training window. Shorten the forecast horizon, or wait until more post-peak data is available. If only one wave is present, switch to a single-wave model.',
-            generalized_logistic:'Try shortening the training window or switching to Richards cumulative form — the generalized logistic (incidence form) may be fitting noise near the peak.'
-          };
-          return suggestions[currentModel]||'Try a more flexible model or shorten the training window.';
-        })()}</div>
-      </div>`;
-
-    // Forecast vs observed mini chart
-    const fciTraces=[
-      {x:testLabels,y:testObs,mode:'markers+lines',name:'Hold-out observed',marker:{color:'#0A5C36',size:8,symbol:'diamond'},line:{color:'#0A5C36',width:1.5,dash:'dot'}},
-      {x:testLabels,y:testPred,mode:'markers+lines',name:'Forecast',marker:{color:'#E05C2A',size:7},line:{color:'#E05C2A',width:2}}
-    ];
-    if(bootResult&&bootResult.forecastCI&&bootResult.forecastCI.length>0){
-      fciTraces.push({
-        x:[...testLabels,...testLabels.slice().reverse()],
-        y:[...bootResult.forecastCI.map(c=>c.hi),...bootResult.forecastCI.map(c=>c.lo).reverse()],
-        fill:'toself',fillcolor:'rgba(224,92,42,0.12)',line:{color:'transparent'},name:'95% PI'
-      });
-    }
-    Plotly.newPlot('forecastVsObsChart',fciTraces,{
-      paper_bgcolor:'transparent',plot_bgcolor:'transparent',
-      font:{family:'DM Sans',size:11,color:'#5a5a56'},
-      xaxis:{title:`Hold-out period (${unit})`,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
-      yaxis:{title:'Cases',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
-      legend:{orientation:'h',y:-0.3},
-      margin:{t:10,r:20,b:70,l:60}
-    },{responsive:true,displayModeBar:false});
-
-  } else if(horizon>0){
-    document.getElementById('forecastEvalCard').style.display='none';
-    document.getElementById('noTestDataNote').style.display='block';
-  } else {
-    document.getElementById('forecastEvalCard').style.display='none';
-    document.getElementById('noTestDataNote').style.display='none';
-  }
-
-  // Dispersion
-  const vmr_v=S.vmr(trainObs),disp=S.dispersionLabel(vmr_v);
-  document.getElementById('dispersionResults').innerHTML=
-    S.fullMetricCard('vmr',S.fmt2(vmr_v),`VMR = <strong>${S.fmt2(vmr_v)}</strong>. ${disp.interpretation}`)+
-    `<div class="${vmr_v>1.5?'warn-box':'info-box'}" style="margin-top:0.75rem"><strong>${disp.label}</strong> — ${disp.model}.${vmr_v>1.5&&currentLoss==='sse'?' Consider switching to <strong>NB log-likelihood</strong>.':''}</div>`;
+  Plotly.newPlot('simChart', traces, layout, {responsive:true, displayModeBar:false});
 }
 
-function fitAllModels(){
-  const split=getSplit();
-  const{trainObs,testObs,horizon}=split;
-  if(trainObs.length<4){alert('Need at least 4 training points.');return;}
-  document.getElementById('fitStatus').textContent='Comparing all models…';
-  document.getElementById('compareBtn').disabled=true;
-  const t=trainObs.map((_,i)=>i);
-  const hasTest=testObs.length>0&&horizon>0;
-  setTimeout(()=>{
-    const results=[];
-    Models.phenomenological.forEach(model=>{
-      try{
-        const lf=getLossFn(model,t,trainObs);
-        const res=Optimizer.fitModel(lf,model.init(trainObs),{maxIter:8000,tol:1e-12});
-        const trainPred=t.map(ti=>Math.max(0,model.fn(ti,res.params)));
-        const testPred=testObs.length>0?Array.from({length:testObs.length},(_,i)=>Math.max(0,model.fn(t.length+i,res.params))):[];
-        results.push({
-          model,
-          rmse:Core.rmse(trainObs,trainPred),mae:Core.mae(trainObs,trainPred),
-          r2:Core.rSquared(trainObs,trainPred),
-          aic:Core.aic(trainObs,trainPred,model.params.length),
-          bic:Core.bic(trainObs,trainPred,model.params.length),
-          frmse:testPred.length>0?Core.rmse(testObs,testPred):null,
-          fmae:testPred.length>0?Core.mae(testObs,testPred):null
-        });
-      }catch(e){results.push({model,rmse:null,aic:null,bic:null,r2:null,mae:null,frmse:null,fmae:null});}
-    });
-    const bestAIC=Math.min(...results.filter(r=>r.aic!==null).map(r=>r.aic));
-    const bestRMSE=Math.min(...results.filter(r=>r.rmse!==null).map(r=>r.rmse));
-    const bestFRMSE=hasTest?Math.min(...results.filter(r=>r.frmse!==null).map(r=>r.frmse)):null;
-    const vmr_v=Core.vmr(trainObs);
-    const rows=results.map(r=>{
-      if(!r.aic)return`<tr><td>${r.model.name}</td><td colspan="${hasTest?7:5}" style="color:var(--text-tertiary);text-align:center">Failed</td></tr>`;
-      return`<tr>
-        <td>${r.model.name} (${r.model.params.length}p)</td>
-        <td class="${r.rmse===bestRMSE?'best':''}">${Core.fmt2(r.rmse)}</td>
-        <td>${Core.fmt(r.r2,4)}</td>
-        <td class="${r.aic===bestAIC?'best':r.aic>bestAIC+10?'worst':''}">${Core.fmt2(r.aic)}</td>
-        <td>${Core.fmt2(r.bic)}</td>
-        ${hasTest?`<td class="${r.frmse===bestFRMSE?'best':''}">${r.frmse!==null?Core.fmt2(r.frmse):'—'}</td><td>${r.fmae!==null?Core.fmt2(r.fmae):'—'}</td>`:''}
-      </tr>`;
-    }).join('');
-    document.getElementById('comparisonCard').style.display='block';
-    document.getElementById('comparisonTable').innerHTML=`
-      <table class="compare-table">
-        <thead><tr><th>Model</th><th>Train RMSE</th><th>Train R²</th><th>AIC</th><th>BIC</th>
-          ${hasTest?'<th>Fcst RMSE <span class="split-badge test" style="font-size:9px">test</span></th><th>Fcst MAE <span class="split-badge test" style="font-size:9px">test</span></th>':''}
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <div class="${vmr_v>1.5?'warn-box':'info-box'}" style="margin-top:0.75rem">
-        <strong>Objective:</strong> ${currentLoss==='sse'?'Least squares':currentLoss==='poisson'?'Poisson GLM':'NB GLM'} ·
-        <strong>VMR:</strong> ${Core.fmt2(vmr_v)} (${Core.dispersionLabel(vmr_v).label}) ·
-        <strong>Best AIC:</strong> ${results.find(r=>r.aic===bestAIC)?.model.name||'—'}
-        ${hasTest?` · <strong>Best forecast RMSE:</strong> ${results.find(r=>r.frmse===bestFRMSE)?.model.name||'—'}`:''}
-      </div>
-      ${hasTest?`<div class="info-box" style="margin-top:6px;font-size:12px">💡 If "Best AIC" ≠ "Best forecast RMSE", the lower-AIC model is overfitting the training data.</div>`:''}`;
-    document.getElementById('fitStatus').textContent='Comparison done ✓';
-    document.getElementById('compareBtn').disabled=false;
-  },10);
+/* ═══════════════════════════════════════
+   KEY QUANTITIES & INTERPRETATION
+═══════════════════════════════════════ */
+function showKeyQuantities(m, inc, cum, t, p) {
+  const cards = m.keyQuantities(p, inc, cum, t);
+  document.getElementById('kvGrid').innerHTML = cards.map(c=>`
+    <div class="kv-card">
+      <div class="kv-label">${c.label}</div>
+      <div class="kv-value">${c.value}</div>
+      <div class="kv-sub">${c.sub}</div>
+    </div>`).join('');
 }
 
-document.getElementById('lossNote').textContent=lossNotes['sse'];
-window.onload=()=>{loadDataset('ebola2014',document.querySelector('#datasetPills .pill-btn'));showModelDef('logistic');updateLabels();};
+function showInterpretation(m, inc, cum, t, p) {
+  const paras = m.interpret(p, inc, cum, t);
+  document.getElementById('interpText').innerHTML = paras.map(s=>`<p>${s}</p>`).join('');
+}
+
+function showEquations(m) {
+  document.getElementById('equationsBox').innerHTML = `
+    <div class="equation-box">
+      <div class="eq-label">${m.name} — equations</div>
+      ${m.equations}
+    </div>
+    ${m.nests?`<div class="info-box" style="margin-top:8px;font-size:12px">Model hierarchy: ${m.nests}</div>`:''}`;
+}
+
+/* ═══════════════════════════════════════
+   INIT
+═══════════════════════════════════════ */
+window.onload = () => {
+  buildUI('logistic');
+  document.querySelector('#modelPills .pill-btn:nth-child(3)').classList.add('active');
+};
 </script>
 </body>
 </html>
