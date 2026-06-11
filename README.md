@@ -30,7 +30,6 @@ Interactive epidemic modeling concepts for teaching and research. Runs entirely 
 
 ## Technical stack
 
-- `js/core.js` — error metrics, formatting utilities
 - `css/style.css` — shared theme, dark mode included
 - Plotly.js (CDN) — all interactive charts
 
