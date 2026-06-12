@@ -99,6 +99,12 @@
       <div class="kv-grid" id="kvGrid"></div>
     </div>
 
+    <div class="card" id="rtCard" style="display:none">
+      <div class="section-label">Rₜ over time — effective reproduction number</div>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Rₜ = R₀ · S(t)/N. Derived directly from the simulation — not estimated from case data. The epidemic peaks exactly when Rₜ crosses 1 from above.</p>
+      <div id="rtChart" style="width:100%;height:240px"></div>
+    </div>
+
     <div class="interp-card" id="interpCard">
       <div class="section-label">Auto-interpretation</div>
       <div id="interpText"></div>
@@ -477,6 +483,7 @@ function runSim() {
       document.getElementById('resultsArea').style.display = 'block';
 
       plotResults(sol, m, p, days);
+      plotRt(sol, m, p);
       showKeyQuantities(sol, m, p, days);
       showInterpretation(sol, m, p, days);
       showEquations(m);
@@ -516,8 +523,49 @@ function plotResults(sol, m, p, days) {
 }
 
 /* ═══════════════════════════════════════
-   KEY QUANTITIES
+   Rₜ PLOT
 ═══════════════════════════════════════ */
+function plotRt(sol, m, p) {
+  const R0val = m.r0(p);
+  const sIdx  = m.compartments.indexOf('S');
+
+  // SI has no R0; SEIR vital R0 formula already accounts for S depletion differently
+  // For all models with a defined R0, Rt = R0 * S(t)/N
+  if (!R0val || sIdx < 0) {
+    document.getElementById('rtCard').style.display = 'none';
+    return;
+  }
+  document.getElementById('rtCard').style.display = 'block';
+
+  const N   = p.N;
+  const Rt  = sol.y.map(row => R0val * row[sIdx] / N);
+  const sIdx2 = m.compartments.indexOf('I');
+  const peakI = Math.max(...sol.y.map(r=>r[sIdx2]));
+  const peakT = sol.t[sol.y.map(r=>r[sIdx2]).indexOf(peakI)];
+
+  // Threshold line at Rt = 1
+  const threshold = { x:[sol.t[0], sol.t[sol.t.length-1]], y:[1,1],
+    mode:'lines', name:'Rₜ = 1', line:{color:'#DC2626', width:1.5, dash:'dash'}, showlegend:true };
+
+  // Rt trace
+  const rtTrace = { x:sol.t, y:Rt, mode:'lines', name:'Rₜ(t)',
+    line:{color:'#7C3AED', width:2.5}, fill:'tozeroy',
+    fillcolor:'rgba(124,58,237,0.07)', showlegend:true };
+
+  // Vertical line at epidemic peak
+  const peakLine = { x:[peakT, peakT], y:[0, Math.max(...Rt)*1.05],
+    mode:'lines', name:`Peak day ${peakT}`,
+    line:{color:'#D97706', width:1.5, dash:'dot'}, showlegend:true };
+
+  Plotly.newPlot('rtChart', [rtTrace, threshold, peakLine], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
+    xaxis:{title:'Time (days)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
+    yaxis:{title:'Rₜ', gridcolor:'rgba(0,0,0,0.06)', zeroline:false, rangemode:'tozero'},
+    legend:{orientation:'h', y:-0.25},
+    margin:{t:10, r:20, b:70, l:60}
+  }, {responsive:true, displayModeBar:false});
+}
 function showKeyQuantities(sol, m, p, days) {
   const iIdx = m.compartments.indexOf('I');
   const rIdx = m.compartments.indexOf('R');
