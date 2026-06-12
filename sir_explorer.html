@@ -55,6 +55,7 @@
       <button class="pill-btn" onclick="setModel('seir',this)">SEIR</button>
       <button class="pill-btn" onclick="setModel('seir_vital',this)">SEIR + vital dynamics</button>
       <button class="pill-btn" onclick="setModel('seir_waning',this)">SEIR + waning immunity</button>
+      <button class="pill-btn" onclick="setModel('seirv',this)">SEIR + vaccination</button>
     </div>
     <div id="modelDescription" class="info-box" style="margin-top:8px;font-size:13px"></div>
 
@@ -120,14 +121,17 @@
         σ (sigma) = progression rate from exposed to infectious (day⁻¹). 1/σ = mean latent period.
         μ (mu) = per capita birth/death rate (day⁻¹). For vital dynamics. Convert from years⁻¹: μ = 1/70 yr⁻¹ ≈ 0.000039 day⁻¹.
         ω (omega) = rate of immunity loss (day⁻¹). 1/ω = mean duration of immunity. ω = 1/365 ≈ 0.00274 day⁻¹ (1-year immunity).
+        v (vax) = vaccine coverage. Proportion of population vaccinated before outbreak (0–1).
+        ε (eff) = vaccine efficacy. Fraction of vaccinated individuals fully protected (0–1). The effectively immunised fraction is v·ε.
       </div>
       <div class="cb-interpretation"><strong>R₀ formulas by model</strong>
         SIR / SI: R₀ = β/γ (SI: R₀ = β·N since no recovery)
         SEIR: R₀ = β/γ (latent period does not affect R₀ — only timing)
         SEIR + vital dynamics: R₀ = β·σ / [(σ+μ)(γ+μ)]
         SEIR + waning immunity: R₀ = β/γ (same as SIR — ω shifts equilibrium, not R₀)
+        SEIR + vaccination: R₀ = β/γ (baseline); Rₑff = R₀·(1 − v·ε) after vaccination
       </div>
-      <div class="cb-sowhat">The latent period (1/σ) delays the epidemic but does not change R₀ or the final size. Vital dynamics (μ) allow endemic equilibrium by continuously replenishing susceptibles. Waning immunity (ω) causes recurrent epidemic waves by moving recovered individuals back into the susceptible pool.</div>
+      <div class="cb-sowhat">The latent period (1/σ) delays the epidemic but does not change R₀ or the final size. Vital dynamics (μ) allow endemic equilibrium by continuously replenishing susceptibles. Waning immunity (ω) causes recurrent epidemic waves. Vaccination reduces the effective susceptible pool — Rₑff &lt; 1 when v·ε &gt; 1 − 1/R₀ (herd immunity threshold).</div>
     </div>
   </div>
 
@@ -248,6 +252,39 @@ const MODELS = {
       {label:'Waning — ω=1/365 (1-year immunity)', params:{beta:0.3,sigma:0.25,gamma:0.1,omega:0.00274}, ics:{N:1000000,E0:0,I0:1000,R0ic:0}, days:1825},
       {label:'Waning — ω=1/182.5 (6-month immunity)', params:{beta:0.3,sigma:0.25,gamma:0.1,omega:0.00548}, ics:{N:1000000,E0:0,I0:1000,R0ic:0}, days:1825},
     ]
+  },
+
+  seirv: {
+    name: 'SEIR + vaccination',
+    desc: 'SEIR with a pre-outbreak vaccination campaign. A proportion v of the population is vaccinated before the epidemic begins and moves to the Vaccinated (V) compartment, reducing the effective susceptible pool. Vaccine efficacy ε (0–1) determines what fraction of vaccinated individuals are fully protected. Explore how coverage and efficacy interact to push Rₑff below 1 and achieve herd immunity.',
+    compartments: ['S','E','I','R','V'],
+    params: [
+      {id:'beta',  label:'β (transmission rate)',  value:0.5,  hint:'Rate of new exposures per day'},
+      {id:'sigma', label:'σ (progression rate)',   value:0.25, hint:'1/σ = mean latent period (days)'},
+      {id:'gamma', label:'γ (recovery rate)',       value:0.1,  hint:'1/γ = mean infectious period (days)'},
+      {id:'vax',   label:'v (vaccine coverage)',   value:0.5,  hint:'Proportion of population vaccinated at t=0 (0–1)'},
+      {id:'eff',   label:'ε (vaccine efficacy)',   value:0.9,  hint:'Fraction of vaccinated who are fully protected (0–1)'},
+    ],
+    ics: [
+      {id:'N',    label:'N (population)', value:1000000, hint:'Total population'},
+      {id:'I0',   label:'I(0)',           value:100,     hint:'Initial infectious at outbreak start'},
+    ],
+    equations: `S(0) = N·(1−v) − I₀ &nbsp; V(0) = N·v·ε &nbsp; S_eff(0) = N·(1−v) + N·v·(1−ε)<br>
+dS/dt = −β·S·I/N<br>
+dE/dt = β·S·I/N − σ·E<br>
+dI/dt = σ·E − γ·I<br>
+dR/dt = γ·I<br>
+dV/dt = 0 &nbsp;&nbsp;(vaccination complete before outbreak)<br>
+<span style="font-size:11px;color:var(--text-tertiary)">Note: vaccinated individuals with partial protection (1−ε fraction) are folded into S at t=0.</span>`,
+    r0: (p) => p.beta / p.gamma,
+    presets: [
+      {label:'Measles — no vaccination (β=1.0, R₀=10)',      params:{beta:1.0,sigma:0.1,gamma:0.1,vax:0.0,eff:0.97}, ics:{N:1000000,I0:100}, days:365},
+      {label:'Measles — 50% coverage (below HIT)',            params:{beta:1.0,sigma:0.1,gamma:0.1,vax:0.5,eff:0.97}, ics:{N:1000000,I0:100}, days:365},
+      {label:'Measles — 93% coverage (at HIT)',               params:{beta:1.0,sigma:0.1,gamma:0.1,vax:0.93,eff:0.97}, ics:{N:1000000,I0:100}, days:365},
+      {label:'COVID-like — 60% coverage, 90% efficacy',       params:{beta:0.3,sigma:0.25,gamma:0.1,vax:0.6,eff:0.9},  ics:{N:1000000,I0:100}, days:365},
+      {label:'COVID-like — 80% coverage, 70% efficacy',       params:{beta:0.3,sigma:0.25,gamma:0.1,vax:0.8,eff:0.7},  ics:{N:1000000,I0:100}, days:365},
+      {label:'High R₀ — coverage gap (v=0.7, ε=0.8)',        params:{beta:0.5,sigma:0.25,gamma:0.1,vax:0.7,eff:0.8},  ics:{N:1000000,I0:100}, days:365},
+    ]
   }
 };
 
@@ -283,7 +320,7 @@ function buildUI(id) {
   buildInputGrid('icGrid', m.ics);
 
   // Set default sim days
-  const defaultDays = id==='seir_vital'?73000:id==='seir_waning'?1825:300;
+  const defaultDays = id==='seir_vital'?73000:id==='seir_waning'?1825:365;
   document.getElementById('simDays').value = defaultDays;
 }
 
@@ -387,6 +424,13 @@ function getDerivFn(id, p) {
       const wan  = p.omega*R;
       return [-inf+wan, inf-prog, prog-rec, rec-wan];
     };
+    case 'seirv': return (t,[S,E,I,R,V]) => {
+      // V is protected vaccinated — they don't participate in transmission
+      const inf  = p.beta*S*I/N;
+      const prog = p.sigma*E;
+      const rec  = p.gamma*I;
+      return [-inf, inf-prog, prog-rec, rec, 0];
+    };
   }
 }
 
@@ -401,6 +445,14 @@ function getY0(id, p) {
     case 'seir_vital':
     case 'seir_waning':
       return [N-p.E0-p.I0-p.R0ic, p.E0, p.I0, p.R0ic];
+    case 'seirv': {
+      // Vaccinated with full protection: N*v*eff → V compartment
+      // Vaccinated without protection: N*v*(1-eff) → folded into S
+      const V0      = p.N * p.vax * p.eff;
+      const S_vacc  = p.N * p.vax * (1 - p.eff); // partial-protection: still susceptible
+      const S0      = p.N * (1 - p.vax) + S_vacc - p.I0;
+      return [Math.max(0, S0), 0, p.I0, 0, V0];
+    }
   }
 }
 
@@ -438,8 +490,8 @@ function runSim() {
 /* ═══════════════════════════════════════
    PLOTTING
 ═══════════════════════════════════════ */
-const COLORS = {S:'#185FA5', E:'#D97706', I:'#DC2626', R:'#059669'};
-const CNAMES = {S:'Susceptible', E:'Exposed', I:'Infectious', R:'Recovered'};
+const COLORS = {S:'#185FA5', E:'#D97706', I:'#DC2626', R:'#059669', V:'#7C3AED'};
+const CNAMES = {S:'Susceptible', E:'Exposed', I:'Infectious', R:'Recovered', V:'Vaccinated (protected)'};
 
 function plotResults(sol, m, p, days) {
   const traces = m.compartments.map((comp, ci) => ({
@@ -506,6 +558,17 @@ function showKeyQuantities(sol, m, p, days) {
   if (p.sigma) cards.push({label:'Mean latent period', value:(1/p.sigma).toFixed(1)+' days', sub:'1/σ'});
   if (p.mu)    cards.push({label:'Mean lifespan', value:((1/p.mu)/365).toFixed(0)+' years', sub:'1/μ'});
   if (p.omega) cards.push({label:'Immunity duration', value:(1/p.omega).toFixed(0)+' days', sub:'1/ω'});
+  if (p.vax !== undefined) {
+    const R0val2 = m.r0(p);
+    const HIT2   = R0val2>1 ? (1 - 1/R0val2)*100 : null;
+    const effCov = p.vax * p.eff * 100;
+    const Reff   = R0val2 * (1 - p.vax * p.eff);
+    cards.push({label:'Vaccine coverage (v)', value:(p.vax*100).toFixed(0)+'%', sub:'Fraction vaccinated at t=0'});
+    cards.push({label:'Vaccine efficacy (ε)', value:(p.eff*100).toFixed(0)+'%', sub:'Protection among vaccinated'});
+    cards.push({label:'Effective coverage (v·ε)', value:effCov.toFixed(1)+'%', sub:'Effectively immunised fraction'});
+    cards.push({label:'Rₑff = R₀·(1 − v·ε)', value:Reff.toFixed(3), sub:Reff<1?'Epidemic suppressed (Rₑff < 1)':'Epidemic can grow (Rₑff > 1)'});
+    if (HIT2) cards.push({label:'Coverage needed for HIT', value:((HIT2/100)/p.eff*100).toFixed(1)+'%', sub:`At ε=${(p.eff*100).toFixed(0)}%, need v·ε ≥ ${HIT2.toFixed(1)}%`});
+  }
   if (t90!==null) cards.push({label:'Time to 90% infection', value:t90+' days', sub:'SI model'});
   if (isEndemic)    cards.push({label:'Steady state', value:'Endemic equilibrium', sub:`~${(lMean/N*100).toFixed(3)}% infected`});
   if (isOscillating) cards.push({label:'Steady state', value:'Oscillating / recurrent', sub:'Waning immunity cycles'});
@@ -577,8 +640,32 @@ function showInterpretation(sol, m, p, days) {
     }
   }
 
+  if (currentModelId==='seirv') {
+    const R0val2 = m.r0(p);
+    const HIT2   = R0val2>1 ? (1-1/R0val2)*100 : null;
+    const Reff   = R0val2 * (1 - p.vax * p.eff);
+    const effCov = (p.vax * p.eff * 100).toFixed(1);
+    const covNeeded = HIT2 ? ((HIT2/100)/p.eff*100).toFixed(1) : null;
+
+    paras.push(`With β = ${p.beta} and γ = ${p.gamma}, the baseline R₀ = β/γ = <strong>${R0val2.toFixed(2)}</strong>. Without vaccination, each infectious individual would infect ${R0val2.toFixed(2)} others on average in a fully susceptible population.`);
+
+    paras.push(`A vaccination campaign covers <strong>${(p.vax*100).toFixed(0)}%</strong> of the population at <strong>${(p.eff*100).toFixed(0)}%</strong> efficacy, effectively immunising <strong>${effCov}%</strong> (v·ε) before the outbreak begins. This reduces the effective reproduction number to Rₑff = R₀·(1−v·ε) = <strong>${Reff.toFixed(2)}</strong>.`);
+
+    if (Reff < 1) {
+      paras.push(`Since Rₑff = ${Reff.toFixed(2)} < 1, the epidemic <strong>cannot sustain itself</strong> — each case generates less than one new case. The outbreak dies out quickly. The herd immunity threshold has been exceeded: with R₀ = ${R0val2.toFixed(2)}, HIT = 1−1/R₀ = ${HIT2?HIT2.toFixed(1)+'%':'N/A'}. At ε = ${(p.eff*100).toFixed(0)}%, the required coverage to achieve HIT is ${covNeeded?covNeeded+'%':'N/A'}, and the current ${(p.vax*100).toFixed(0)}% exceeds this.`);
+      paras.push(`The epidemic peak of <strong>${(peakI/N*100).toFixed(2)}% of N</strong> (${Math.round(peakI).toLocaleString()} individuals) reflects only residual transmission in the unvaccinated and incompletely-protected fraction. Final attack rate: <strong>${finalR!==null?(finalR/N*100).toFixed(1)+'%':'—'}</strong> of the total population.`);
+    } else {
+      paras.push(`Since Rₑff = ${Reff.toFixed(2)} > 1, the epidemic <strong>still grows</strong> — herd immunity threshold not yet reached. The outbreak peaks at approximately <strong>${Math.round(peakI).toLocaleString()} individuals (${(peakI/N*100).toFixed(1)}% of N)</strong> around day ${peakT}. Final attack rate: <strong>${finalR!==null?(finalR/N*100).toFixed(1)+'%':'—'}</strong> of the population.`);
+      if (HIT2 && covNeeded) {
+        const shortfall = (parseFloat(covNeeded) - p.vax*100).toFixed(1);
+        paras.push(`To suppress this outbreak at ε = ${(p.eff*100).toFixed(0)}% efficacy, coverage must reach at least <strong>${covNeeded}%</strong> (so v·ε ≥ ${HIT2.toFixed(1)}%). ${parseFloat(covNeeded)>100?`This is unachievable at this efficacy level — even 100% coverage yields v·ε = ${(p.eff*100).toFixed(0)}% < ${HIT2.toFixed(1)}%. A more efficacious vaccine or additional NPIs are needed.`:`Current coverage is ${shortfall} percentage points short of the threshold.`}`);
+      }
+    }
+
+    paras.push(`Coverage and efficacy are interchangeable via their product v·ε for Rₑff. A 90%-efficacy vaccine at 70% coverage (v·ε = 63%) achieves the same Rₑff as a 70%-efficacy vaccine at 90% coverage. However, when vaccine supply is constrained, higher efficacy allows reaching HIT at lower coverage — a critical consideration for outbreak response planning.`);
+  }
+
   if (currentModelId==='si') {
-    const t90idx = Iseries.findIndex(v=>v>=N*0.9);
     const t90 = t90idx>=0 ? sol.t[t90idx] : null;
     paras.push(`In the SI model there is no recovery — every infected individual remains infectious indefinitely. I(t) increases monotonically toward N = ${N.toLocaleString()}, following a logistic-like curve driven by β = ${p.beta}.`);
     paras.push(`With I(0) = ${p.I0.toLocaleString()}, the population reaches 90% infection by day ${t90!==null?t90:'> simulation end'}. A larger I(0) increases the initial force of infection (β·S·I/N), accelerating early epidemic growth and bringing the 90% threshold forward in time.`);
