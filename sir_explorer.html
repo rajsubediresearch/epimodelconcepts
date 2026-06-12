@@ -148,7 +148,7 @@ const MODELS = {
     desc: 'Susceptible–Infectious. No recovery. Every infected individual remains infectious forever. Used to model diseases without recovery (e.g. some chronic infections). I(t) monotonically increases to N.',
     compartments: ['S','I'],
     params: [
-      {id:'beta', label:'β (transmission rate)', value:0.3, hint:'Rate of S→I per contact per day'},
+      {id:'beta', label:'β (transmission rate)', value:0.3, step:0.01, min:0, hint:'Rate of S→I per contact per day'},
     ],
     ics: [
       {id:'N', label:'N (population)', value:1000000, hint:'Total population size'},
@@ -166,8 +166,8 @@ const MODELS = {
     desc: 'Susceptible–Infectious–Recovered. The foundational epidemic model. Infected individuals recover at rate γ and gain permanent immunity. Captures the full epidemic arc: rise, peak, and decline.',
     compartments: ['S','I','R'],
     params: [
-      {id:'beta', label:'β (transmission rate)', value:0.3, hint:'Rate of new infections per day'},
-      {id:'gamma', label:'γ (recovery rate)', value:0.1, hint:'1/γ = mean infectious period (days)'},
+      {id:'beta', label:'β (transmission rate)', value:0.3, step:0.01, min:0, hint:'Rate of new infections per day'},
+      {id:'gamma', label:'γ (recovery rate)', value:0.1, step:0.01, min:0.001, hint:'1/γ = mean infectious period (days)'},
     ],
     ics: [
       {id:'N', label:'N (population)', value:1000000, hint:'Total population'},
@@ -188,9 +188,9 @@ const MODELS = {
     desc: 'Susceptible–Exposed–Infectious–Recovered. Adds a latent (exposed) period before infectiousness. More realistic for diseases with an incubation period (influenza, COVID-19, measles). Delays but does not eliminate the epidemic.',
     compartments: ['S','E','I','R'],
     params: [
-      {id:'beta', label:'β (transmission rate)', value:0.3, hint:'Rate of new exposures per day'},
-      {id:'sigma', label:'σ (progression rate)', value:0.5, hint:'1/σ = mean latent period (days)'},
-      {id:'gamma', label:'γ (recovery rate)', value:0.1, hint:'1/γ = mean infectious period (days)'},
+      {id:'beta', label:'β (transmission rate)', value:0.3, step:0.01, min:0, hint:'Rate of new exposures per day'},
+      {id:'sigma', label:'σ (progression rate)', value:0.5, step:0.01, min:0.001, hint:'1/σ = mean latent period (days)'},
+      {id:'gamma', label:'γ (recovery rate)', value:0.1, step:0.01, min:0.001, hint:'1/γ = mean infectious period (days)'},
     ],
     ics: [
       {id:'N', label:'N (population)', value:1000000, hint:'Total population'},
@@ -212,10 +212,10 @@ const MODELS = {
     desc: 'SEIR with birth and death (vital dynamics). A constant per capita birth rate μ adds new susceptibles, while μ removes individuals from all compartments. Allows the system to reach an endemic equilibrium rather than dying out.',
     compartments: ['S','E','I','R'],
     params: [
-      {id:'beta', label:'β (transmission rate)', value:0.3, hint:''},
-      {id:'sigma', label:'σ (progression rate)', value:0.25, hint:'1/σ = mean latent period'},
-      {id:'gamma', label:'γ (recovery rate)', value:0.1, hint:'1/γ = mean infectious period'},
-      {id:'mu', label:'μ (birth/death rate)', value:0.000039, hint:'1/70 yr⁻¹ ≈ 0.000039 day⁻¹'},
+      {id:'beta', label:'β (transmission rate)', value:0.3, step:0.01, min:0, hint:''},
+      {id:'sigma', label:'σ (progression rate)', value:0.25, step:0.01, min:0.001, hint:'1/σ = mean latent period'},
+      {id:'gamma', label:'γ (recovery rate)', value:0.1, step:0.01, min:0.001, hint:'1/γ = mean infectious period'},
+      {id:'mu', label:'μ (birth/death rate)', value:0.000039, step:0.000001, min:0, hint:'1/70 yr⁻¹ ≈ 0.000039 day⁻¹'},
     ],
     ics: [
       {id:'N', label:'N (population)', value:1000000, hint:'Total population'},
@@ -235,10 +235,10 @@ const MODELS = {
     desc: 'SEIR with waning immunity. Recovered individuals lose immunity at rate ω and return to the susceptible pool (R→S). This creates recurrent epidemic waves and can produce endemic oscillations.',
     compartments: ['S','E','I','R'],
     params: [
-      {id:'beta', label:'β (transmission rate)', value:0.3, hint:''},
-      {id:'sigma', label:'σ (progression rate)', value:0.25, hint:'1/σ = mean latent period'},
-      {id:'gamma', label:'γ (recovery rate)', value:0.1, hint:'1/γ = mean infectious period'},
-      {id:'omega', label:'ω (waning rate)', value:0.00274, hint:'1/365 ≈ 0.00274 day⁻¹ (1-yr immunity)'},
+      {id:'beta', label:'β (transmission rate)', value:0.3, step:0.01, min:0, hint:''},
+      {id:'sigma', label:'σ (progression rate)', value:0.25, step:0.01, min:0.001, hint:'1/σ = mean latent period'},
+      {id:'gamma', label:'γ (recovery rate)', value:0.1, step:0.01, min:0.001, hint:'1/γ = mean infectious period'},
+      {id:'omega', label:'ω (waning rate)', value:0.00274, step:0.001, min:0, hint:'1/365 ≈ 0.00274 day⁻¹ (1-yr immunity)'},
     ],
     ics: [
       {id:'N', label:'N (population)', value:1000000, hint:'Total population'},
@@ -259,11 +259,11 @@ const MODELS = {
     desc: 'SEIR with a pre-outbreak vaccination campaign. A proportion v of the population is vaccinated before the epidemic begins and moves to the Vaccinated (V) compartment, reducing the effective susceptible pool. Vaccine efficacy ε (0–1) determines what fraction of vaccinated individuals are fully protected. Explore how coverage and efficacy interact to push Rₑff below 1 and achieve herd immunity.',
     compartments: ['S','E','I','R','V'],
     params: [
-      {id:'beta',  label:'β (transmission rate)',  value:0.5,  hint:'Rate of new exposures per day'},
-      {id:'sigma', label:'σ (progression rate)',   value:0.25, hint:'1/σ = mean latent period (days)'},
-      {id:'gamma', label:'γ (recovery rate)',       value:0.1,  hint:'1/γ = mean infectious period (days)'},
-      {id:'vax',   label:'v (vaccine coverage)',   value:0.5,  hint:'Proportion of population vaccinated at t=0 (0–1)'},
-      {id:'eff',   label:'ε (vaccine efficacy)',   value:0.9,  hint:'Fraction of vaccinated who are fully protected (0–1)'},
+      {id:'beta',  label:'β (transmission rate)',  value:0.5,  step:0.01, min:0,   hint:'Rate of new exposures per day'},
+      {id:'sigma', label:'σ (progression rate)',   value:0.25, step:0.01, min:0.001, hint:'1/σ = mean latent period (days)'},
+      {id:'gamma', label:'γ (recovery rate)',       value:0.1,  step:0.01, min:0.001, hint:'1/γ = mean infectious period (days)'},
+      {id:'vax',   label:'v (vaccine coverage)',   value:0.5,  step:0.01, min:0, max:1, hint:'Proportion of population vaccinated at t=0 (0–1)'},
+      {id:'eff',   label:'ε (vaccine efficacy)',   value:0.9,  step:0.01, min:0, max:1, hint:'Fraction of vaccinated who are fully protected (0–1)'},
     ],
     ics: [
       {id:'N',    label:'N (population)', value:1000000, hint:'Total population'},
@@ -331,7 +331,7 @@ function buildInputGrid(gridId, fields) {
     const card = document.createElement('div');
     card.className = 'param-card';
     card.innerHTML = `<label>${f.label}</label>
-      <input type="number" id="param_${f.id}" value="${f.value}" step="any">
+      <input type="number" id="param_${f.id}" value="${f.value}" step="${f.step||'any'}" ${f.min!==undefined?`min="${f.min}"`:''}  ${f.max!==undefined?`max="${f.max}"`:''}>
       <div class="param-hint">${f.hint}</div>`;
     grid.appendChild(card);
   });
