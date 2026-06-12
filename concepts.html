@@ -307,7 +307,17 @@
   <a href="https://github.com/rajsubediresearch/epimodelconcepts" target="_blank">GitHub</a>
 </footer>
 
-<script src="js/core.js"></script>
+<script>
+const Core = {
+  metricCard(label, value, unit, tooltip) {
+    return `<div class="metric-card" title="${tooltip||''}">
+      <div class="metric-label">${label}</div>
+      <div class="metric-value">${value}${unit?`<span class="metric-unit"> ${unit}</span>`:''}</div>
+      ${tooltip?`<div class="metric-tip">${tooltip}</div>`:''}
+    </div>`;
+  }
+};
+</script>
 <script>
 function showTab(id, btn) {
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
