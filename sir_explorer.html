@@ -500,6 +500,35 @@ function runSim() {
 const COLORS = {S:'#185FA5', E:'#D97706', I:'#DC2626', R:'#059669', V:'#7C3AED'};
 const CNAMES = {S:'Susceptible', E:'Exposed', I:'Infectious', R:'Recovered', V:'Vaccinated (protected)'};
 
+function computeIncidence(sol, id, p) {
+  // Returns daily incidence series matched to sol.t
+  // Definition: new infections entering the infectious/exposed pool per day
+  const N = p.N;
+  switch(id) {
+    case 'si': {
+      const sIdx = 0, iIdx = 1;
+      return sol.y.map(row => p.beta * row[sIdx] * row[iIdx] / N);
+    }
+    case 'sir': {
+      const sIdx = 0, iIdx = 1;
+      return sol.y.map(row => p.beta * row[sIdx] * row[iIdx] / N);
+    }
+    case 'seir':
+    case 'seir_vital':
+    case 'seir_waning': {
+      // σ·E = flow from E→I = onset of infectiousness (what surveillance captures)
+      const eIdx = 1;
+      return sol.y.map(row => p.sigma * row[eIdx]);
+    }
+    case 'seirv': {
+      const eIdx = 1;
+      return sol.y.map(row => p.sigma * row[eIdx]);
+    }
+    default:
+      return sol.y.map(() => 0);
+  }
+}
+
 function plotResults(sol, m, p, days) {
   const traces = m.compartments.map((comp, ci) => ({
     x: sol.t,
@@ -509,6 +538,17 @@ function plotResults(sol, m, p, days) {
     line: { color: COLORS[comp]||'#888', width: comp==='I'?3:2 }
   }));
 
+  // Add incidence as dashed red line on secondary y-axis
+  const incidence = computeIncidence(sol, currentModelId, p);
+  traces.push({
+    x: sol.t,
+    y: incidence,
+    mode: 'lines',
+    name: 'Incidence (new cases/day)',
+    yaxis: 'y2',
+    line: { color: '#C0392B', width: 3, dash: 'dash' }
+  });
+
   const title = `${m.name} — N=${p.N.toLocaleString()}, β=${p.beta}${p.gamma?', γ='+p.gamma:''}`;
   document.getElementById('chartTitle').textContent = title;
 
@@ -517,8 +557,9 @@ function plotResults(sol, m, p, days) {
     font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
     xaxis:{title:'Time (days)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
     yaxis:{title:'Number of individuals', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
-    legend:{orientation:'h', y:-0.2},
-    margin:{t:30, r:20, b:70, l:70}
+    yaxis2:{title:'Incidence (new cases/day)', overlaying:'y', side:'right', gridcolor:'transparent', zeroline:false, showgrid:false},
+    legend:{orientation:'h', y:-0.22},
+    margin:{t:30, r:80, b:75, l:70}
   }, {responsive:true, displayModeBar:false});
 }
 
@@ -601,6 +642,12 @@ function showKeyQuantities(sol, m, p, days) {
   if (HIT)   cards.push({label:'Herd immunity threshold', value:HIT.toFixed(1)+'%', sub:'1 − 1/R₀'});
   cards.push({label:'Peak I(t)', value:Math.round(peakI).toLocaleString(), sub:`Day ${peakT}`});
   cards.push({label:'Peak as % of N', value:(peakI/N*100).toFixed(2)+'%', sub:'Peak infectious / N'});
+
+  // Peak incidence (new cases/day)
+  const incSeries = computeIncidence(sol, currentModelId, p);
+  const peakInc = Math.max(...incSeries);
+  const peakIncT = sol.t[incSeries.indexOf(peakInc)];
+  cards.push({label:'Peak incidence', value:Math.round(peakInc).toLocaleString()+'/day', sub:`Day ${peakIncT} — new cases/day`});
   if (finalR!==null) cards.push({label:'Final R (total infected)', value:Math.round(finalR).toLocaleString(), sub:(finalR/N*100).toFixed(1)+'% of population'});
   if (p.gamma) cards.push({label:'Mean infectious period', value:(1/p.gamma).toFixed(1)+' days', sub:'1/γ'});
   if (p.sigma) cards.push({label:'Mean latent period', value:(1/p.sigma).toFixed(1)+' days', sub:'1/σ'});
@@ -653,22 +700,34 @@ function showInterpretation(sol, m, p, days) {
   // Model-specific interpretations
   if (currentModelId==='sir') {
     const R0str = R0val ? R0val.toFixed(2) : '—';
+    const incSeries = computeIncidence(sol, currentModelId, p);
+    const peakInc = Math.max(...incSeries);
+    const peakIncT = sol.t[incSeries.indexOf(peakInc)];
     paras.push(`With β = ${p.beta} and γ = ${p.gamma}, R₀ = β/γ = <strong>${R0str}</strong>. ${R0val>1?`Since R₀ > 1, the epidemic grows initially — each infectious individual infects on average ${R0str} others in a fully susceptible population.`:'Since R₀ ≤ 1, the epidemic cannot sustain itself and dies out without a major outbreak.'}`);
     paras.push(`The epidemic peaks at approximately <strong>${Math.round(peakI).toLocaleString()} infectious individuals (${(peakI/N*100).toFixed(1)}% of the population)</strong> around day ${peakT}. ${finalR!==null?`By the end of the simulation, <strong>${(finalR/N*100).toFixed(1)}%</strong> of the population (${Math.round(finalR).toLocaleString()} individuals) has been infected and recovered.`:''}`);
+    paras.push(`The dashed red line shows the <strong>incidence curve</strong> — new infections per day (β·S·I/N). Peak incidence of <strong>${Math.round(peakInc).toLocaleString()} new cases/day</strong> occurs on day ${peakIncT}, coinciding exactly with the peak of I(t). This is what surveillance systems would observe (before reporting delays), and it's the quantity phenomenological models are fitted to.`);
     if (p.beta===0.6) paras.push(`Doubling β from 0.3 to 0.6 doubles R₀ from 3 to 6, which accelerates the epidemic substantially — the peak arrives earlier and is higher in magnitude, since more susceptibles are depleted per unit time.`);
     if (p.beta===0.15) paras.push(`Reducing β by 50% (to 0.15) halves R₀ to 1.5. This "flattens the curve" — the peak is lower and later, and the final epidemic size is substantially smaller. Reducing β alters epidemic size because a lower R₀ means each case infects fewer individuals, leaving more of the population uninfected at the end.`);
   }
 
   if (currentModelId==='seir') {
     const latent = p.sigma ? (1/p.sigma).toFixed(1) : '—';
+    const incSeries = computeIncidence(sol, currentModelId, p);
+    const peakInc = Math.max(...incSeries);
+    const peakIncT = sol.t[incSeries.indexOf(peakInc)];
     paras.push(`With a latent period of 1/σ = <strong>${latent} days</strong>, infected individuals pass through an exposed (E) compartment before becoming infectious. R₀ = β/γ = <strong>${R0val?R0val.toFixed(2):'—'}</strong> — note that σ does not affect R₀, only the timing of the epidemic.`);
     paras.push(`The epidemic peaks at approximately <strong>${Math.round(peakI).toLocaleString()} infectious individuals</strong> around day ${peakT}. ${finalR!==null?`The final epidemic size is <strong>${(finalR/N*100).toFixed(1)}%</strong> of the population — identical to the SIR model with the same β and γ, since the latent period shifts timing but not final size.`:''}`);
+    paras.push(`The dashed red line shows <strong>incidence (σ·E, new cases/day)</strong> — the flow from E→I, representing symptom onset or the start of infectiousness. Peak incidence of <strong>${Math.round(peakInc).toLocaleString()} new cases/day</strong> occurs on day ${peakIncT}. In SEIR, the incidence peak <em>precedes</em> the I(t) peak slightly, because individuals pile up in I before they recover — this distinction matters when comparing model output to surveillance data, which typically captures onset (E→I flow), not the prevalence of I.`);
     paras.push(`A longer latent period (smaller σ, larger 1/σ) delays the epidemic peak because individuals spend more time in the E compartment before contributing to transmission. The epidemic grows more slowly in the early phase, but eventually reaches a similar peak magnitude since R₀ is unchanged.`);
   }
 
   if (currentModelId==='seir_vital') {
     const lifespanYears = p.mu>0?(1/p.mu/365).toFixed(0):'∞';
+    const incSeries = computeIncidence(sol, currentModelId, p);
+    const peakInc = Math.max(...incSeries);
+    const peakIncT = sol.t[incSeries.indexOf(peakInc)];
     paras.push(`With vital dynamics (μ = ${p.mu.toExponential(2)} day⁻¹, corresponding to a mean lifespan of ~${lifespanYears} years), new susceptibles are continuously born into the population, preventing complete susceptible depletion. R₀ for this model = β·σ/[(σ+μ)(γ+μ)] = <strong>${R0val?R0val.toFixed(2):'—'}</strong>.`);
+    paras.push(`The dashed red line shows <strong>incidence (σ·E, new cases/day)</strong>. Peak incidence of <strong>${Math.round(peakInc).toLocaleString()} new cases/day</strong> occurs on day ${peakIncT} during the initial epidemic wave. In the endemic phase, incidence stabilises at a low level sustained by births continuously replenishing the susceptible pool.`);
     if (isEndemic) {
       paras.push(`The system reaches an <strong>endemic equilibrium</strong> — I(t) stabilizes at approximately <strong>${(lMean/N*100).toFixed(3)}% of the population</strong> (${Math.round(lMean).toLocaleString()} individuals). This occurs because births continuously replenish the susceptible pool at the same rate that transmission and death deplete it.`);
       paras.push(`At endemic equilibrium, the proportion susceptible equals 1/R₀ = ${R0val?(1/R0val*100).toFixed(1)+'%':'—'}. A higher birth rate (larger μ) replenishes susceptibles faster, raising the endemic equilibrium level of infection — this explains why higher demographic turnover can paradoxically sustain higher disease burden.`);
@@ -679,7 +738,11 @@ function showInterpretation(sol, m, p, days) {
 
   if (currentModelId==='seir_waning') {
     const immunityDays = p.omega>0?(1/p.omega).toFixed(0):'∞';
+    const incSeries = computeIncidence(sol, currentModelId, p);
+    const peakInc = Math.max(...incSeries);
+    const peakIncT = sol.t[incSeries.indexOf(peakInc)];
     paras.push(`With waning immunity (ω = ${p.omega.toExponential(3)} day⁻¹, mean immunity duration = <strong>${immunityDays} days ≈ ${(immunityDays/365).toFixed(1)} years</strong>), recovered individuals return to the susceptible pool at rate ω·R. This R→S flow continuously replenishes susceptibles even after the initial epidemic.`);
+    paras.push(`The dashed red line shows <strong>incidence (σ·E, new cases/day)</strong>. The first wave peaks at <strong>${Math.round(peakInc).toLocaleString()} new cases/day</strong> on day ${peakIncT}. With waning immunity, subsequent waves appear as incidence rises again each time enough susceptibles have re-accumulated.`);
     if (isOscillating) {
       paras.push(`The simulation shows <strong>recurrent epidemic waves</strong> — each wave infects a cohort of susceptibles, immunity wanes over ~${immunityDays} days, and a new wave begins when enough susceptibles have accumulated. The interval between peaks is determined by the rate of immune waning and the transmission rate.`);
       paras.push(`Shorter immunity duration (larger ω) produces more frequent peaks with shorter inter-epidemic intervals. The peak height may also differ — faster waning means more susceptibles are available sooner, potentially supporting higher peak incidence but leaving less time for post-epidemic immunity buildup.`);
@@ -694,10 +757,13 @@ function showInterpretation(sol, m, p, days) {
     const Reff   = R0val2 * (1 - p.vax * p.eff);
     const effCov = (p.vax * p.eff * 100).toFixed(1);
     const covNeeded = HIT2 ? ((HIT2/100)/p.eff*100).toFixed(1) : null;
+    const incSeries = computeIncidence(sol, currentModelId, p);
+    const peakInc = Math.max(...incSeries);
+    const peakIncT = sol.t[incSeries.indexOf(peakInc)];
 
     paras.push(`With β = ${p.beta} and γ = ${p.gamma}, the baseline R₀ = β/γ = <strong>${R0val2.toFixed(2)}</strong>. Without vaccination, each infectious individual would infect ${R0val2.toFixed(2)} others on average in a fully susceptible population.`);
-
     paras.push(`A vaccination campaign covers <strong>${(p.vax*100).toFixed(0)}%</strong> of the population at <strong>${(p.eff*100).toFixed(0)}%</strong> efficacy, effectively immunising <strong>${effCov}%</strong> (v·ε) before the outbreak begins. This reduces the effective reproduction number to Rₑff = R₀·(1−v·ε) = <strong>${Reff.toFixed(2)}</strong>.`);
+    paras.push(`The dashed red line shows <strong>incidence (σ·E, new cases/day)</strong> — what surveillance would observe. Peak incidence of <strong>${Math.round(peakInc).toLocaleString()} new cases/day</strong> occurs on day ${peakIncT}. Compare this across vaccination scenarios to see how coverage and efficacy directly compress the incidence curve.`);
 
     if (Reff < 1) {
       paras.push(`Since Rₑff = ${Reff.toFixed(2)} < 1, the epidemic <strong>cannot sustain itself</strong> — each case generates less than one new case. The outbreak dies out quickly. The herd immunity threshold has been exceeded: with R₀ = ${R0val2.toFixed(2)}, HIT = 1−1/R₀ = ${HIT2?HIT2.toFixed(1)+'%':'N/A'}. At ε = ${(p.eff*100).toFixed(0)}%, the required coverage to achieve HIT is ${covNeeded?covNeeded+'%':'N/A'}, and the current ${(p.vax*100).toFixed(0)}% exceeds this.`);
@@ -709,13 +775,17 @@ function showInterpretation(sol, m, p, days) {
         paras.push(`To suppress this outbreak at ε = ${(p.eff*100).toFixed(0)}% efficacy, coverage must reach at least <strong>${covNeeded}%</strong> (so v·ε ≥ ${HIT2.toFixed(1)}%). ${parseFloat(covNeeded)>100?`This is unachievable at this efficacy level — even 100% coverage yields v·ε = ${(p.eff*100).toFixed(0)}% < ${HIT2.toFixed(1)}%. A more efficacious vaccine or additional NPIs are needed.`:`Current coverage is ${shortfall} percentage points short of the threshold.`}`);
       }
     }
-
     paras.push(`Coverage and efficacy are interchangeable via their product v·ε for Rₑff. A 90%-efficacy vaccine at 70% coverage (v·ε = 63%) achieves the same Rₑff as a 70%-efficacy vaccine at 90% coverage. However, when vaccine supply is constrained, higher efficacy allows reaching HIT at lower coverage — a critical consideration for outbreak response planning.`);
   }
 
   if (currentModelId==='si') {
+    const t90idx = Iseries.findIndex(v => v >= N * 0.9);
     const t90 = t90idx>=0 ? sol.t[t90idx] : null;
+    const incSeries = computeIncidence(sol, currentModelId, p);
+    const peakInc = Math.max(...incSeries);
+    const peakIncT = sol.t[incSeries.indexOf(peakInc)];
     paras.push(`In the SI model there is no recovery — every infected individual remains infectious indefinitely. I(t) increases monotonically toward N = ${N.toLocaleString()}, following a logistic-like curve driven by β = ${p.beta}.`);
+    paras.push(`The dashed red line shows <strong>incidence (β·S·I/N, new cases/day)</strong>, which peaks at <strong>${Math.round(peakInc).toLocaleString()} new cases/day</strong> on day ${peakIncT} — the point of fastest epidemic growth — then declines as the susceptible pool depletes, even though I(t) continues to rise.`);
     paras.push(`With I(0) = ${p.I0.toLocaleString()}, the population reaches 90% infection by day ${t90!==null?t90:'> simulation end'}. A larger I(0) increases the initial force of infection (β·S·I/N), accelerating early epidemic growth and bringing the 90% threshold forward in time.`);
     paras.push(`The SI model is unrealistic for most infectious diseases because it assumes no recovery, no immunity, and no death from infection. Real diseases typically have finite infectious periods (γ > 0). The SI model is most appropriate for infections that are truly chronic and lifelong (e.g. some parasitic infections or as a simple approximation for very slow-progressing diseases).`);
   }
