@@ -175,6 +175,8 @@
       <strong>How synthetic data is generated:</strong> The true model produces a deterministic incidence curve I(t). Observed counts Y_t are then drawn from a noise distribution around that curve:
       Poisson: Y_t ~ Poisson(I(t)) — variance = mean, appropriate for well-reported outbreaks.
       Negative Binomial: Y_t ~ NegBin(I(t), θ) — variance = I(t) + I(t)²/θ, appropriate when clustering or reporting heterogeneity inflates variance. Smaller θ = more overdispersion.
+      Normal: Y_t ~ Normal(I(t), σ²) — additive Gaussian noise with SD σ. Appropriate when errors are symmetric and not count-structured. Corresponds to SSE loss function.
+      Match your loss function to your noise type for statistically consistent estimation (Poisson noise → Poisson deviance; NB noise → NB deviance; Normal noise → SSE).
     </div>
 
     <div class="inner-divider">True model</div>
@@ -206,18 +208,26 @@
       </div>
       <div class="param-card">
         <label>Noise type</label>
-        <select id="fitNoise" style="width:100%;font-size:13px;padding:6px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg);color:var(--text)">
+        <select id="fitNoise" style="width:100%;font-size:13px;padding:6px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg);color:var(--text)" onchange="toggleNoiseParams()">
           <option value="poisson">Poisson</option>
           <option value="negbinom" selected>Negative Binomial</option>
+          <option value="normal">Normal (Gaussian)</option>
         </select>
         <div class="param-hint">Observation error distribution</div>
       </div>
-      <div class="param-card">
+      <div class="param-card" id="thetaCard">
         <label>θ (NB dispersion)</label>
         <input type="number" id="fitTheta" value="5" min="0.5" max="100" step="0.5"
           oninput="clampOnKeyDirect(this,0.5,100)">
         <input type="range" id="fitThetas" value="5" min="0.5" max="100" step="0.5" oninput="document.getElementById('fitTheta').value=this.value">
         <div class="param-hint">θ→∞ ≈ Poisson; θ&lt;1 = high overdispersion</div>
+      </div>
+      <div class="param-card" id="sigmaCard" style="display:none">
+        <label>σ (noise SD)</label>
+        <input type="number" id="fitSigma" value="20" min="1" max="500" step="1"
+          oninput="clampOnKeyDirect(this,1,500)">
+        <input type="range" id="fitSigmas" value="20" min="1" max="500" step="1" oninput="document.getElementById('fitSigma').value=this.value">
+        <div class="param-hint">SD of additive Gaussian noise on incidence</div>
       </div>
       <div class="param-card">
         <label>Random seed</label>
@@ -246,14 +256,15 @@
     <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Adjust parameters below and watch the fitted curve update on the chart. Try to minimize the loss function by eye — this builds intuition for what fitting algorithms do automatically.</p>
     <div class="math-box">
       <strong>Loss functions:</strong>
-      SSE (Sum of Squared Errors): L = Σ (Y_t − Î(t))². Simple, penalizes large deviations. Equivalent to MLE under Gaussian errors.
-      Poisson deviance: L = −2 Σ [Y_t · ln(Î(t)) − Î(t)]. The correct likelihood for Poisson counts. Minimizing = maximizing Poisson log-likelihood.
-      NB deviance: L = −2 Σ [Y_t · ln(μ_t) − (Y_t+θ)·ln(1 + μ_t/θ)]. Correct for overdispersed counts. Preferred for real outbreak data.
+      SSE (Sum of Squared Errors): L = Σ (Y_t − Î(t))². Equivalent to MLE under Normal/Gaussian errors. Use when noise type = Normal.
+      Poisson deviance: L = −2 Σ [Y_t · ln(Î(t)) − Î(t)]. Correct likelihood for Poisson counts. Use when noise type = Poisson.
+      NB deviance: L = −2 Σ [Y_t · ln(μ_t/(μ_t+θ)) + θ·ln(θ/(μ_t+θ))]. Correct for overdispersed counts. Use when noise type = Negative Binomial.
+      Match your loss function to your noise type for statistically consistent estimation.
     </div>
     <div class="inner-divider">Loss function</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <select id="fitLoss" style="font-size:13px;padding:6px 10px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg);color:var(--text)" onchange="updateManualFit()">
-        <option value="sse">SSE</option>
+        <option value="sse">SSE (Normal errors)</option>
         <option value="poisson" selected>Poisson deviance</option>
         <option value="negbinom">NB deviance</option>
       </select>
@@ -1178,6 +1189,17 @@ function clampParams(vec, modelId) {
 /* ═══════════════════════════════════════
    DATA GENERATION
 ═══════════════════════════════════════ */
+function toggleNoiseParams() {
+  const noiseType = document.getElementById('fitNoise').value;
+  document.getElementById('thetaCard').style.display = noiseType==='negbinom' ? 'block' : 'none';
+  document.getElementById('sigmaCard').style.display = noiseType==='normal' ? 'block' : 'none';
+}
+
+function normalSample(mu, sigma, rng) {
+  let u,v,s; do{u=2*rng()-1;v=2*rng()-1;s=u*u+v*v;}while(s>=1||s===0);
+  return Math.max(0, mu + sigma*u*Math.sqrt(-2*Math.log(s)/s));
+}
+
 function generateData() {
   const m = FIT_MODELS[fitModelId];
   const trueP = getFitParams('ft_');
@@ -1185,17 +1207,51 @@ function generateData() {
   const calib = Math.min(parseInt(document.getElementById('fitCalib').value)||20, n-1);
   const noiseType = document.getElementById('fitNoise').value;
   const theta = parseFloat(document.getElementById('fitTheta').value)||5;
+  const sigma = parseFloat(document.getElementById('fitSigma').value)||20;
   const seed = parseInt(document.getElementById('fitSeed').value)||42;
   const rng = makePRNG(seed);
 
   const tArr = Array.from({length:n},(_,i)=>i+1);
   const trueMu = evalFitModel(fitModelId, trueP, tArr);
-  const y = trueMu.map(mu => noiseType==='poisson' ? poissonSample(mu,rng) : nbSample(mu,theta,rng));
 
-  fitObsData = {t:tArr, y, trueMu, calib, n, trueP, theta, noiseType};
+  let y;
+  if (noiseType==='poisson') y = trueMu.map(mu=>poissonSample(mu,rng));
+  else if (noiseType==='negbinom') y = trueMu.map(mu=>nbSample(mu,theta,rng));
+  else y = trueMu.map(mu=>Math.round(normalSample(mu,sigma,rng)));
+
+  // Data-informed initialization: estimate peak time and total from calibration data
+  const yCalib = y.slice(0,calib);
+  const peakIdxCalib = yCalib.indexOf(Math.max(...yCalib));
+  const peakInCalib = peakIdxCalib < calib - 2; // peak visible in calibration window
+  const estPeakT = peakInCalib ? tArr[peakIdxCalib] : tArr[calib-1] * 1.5; // extrapolate if not visible
+  const estK = peakInCalib
+    ? Math.max(yCalib.reduce((s,v)=>s+v,0)*2, Math.max(...yCalib)*5)
+    : Math.max(...yCalib) * 20; // if only growth phase seen, K is very uncertain
+
+  // Calibration warning
+  const truePeak = trueMu.indexOf(Math.max(...trueMu));
+  const peakWarning = truePeak >= calib
+    ? `⚠️ Peak (t≈${truePeak+1}) is outside calibration window (t=1–${calib}). Fitting growth phase only — K and t_m will be poorly identified. Extend calibration window past the peak for reliable fitting.`
+    : null;
+
+  fitObsData = {t:tArr, y, trueMu, calib, n, trueP, theta, sigma, noiseType, estPeakT, estK, peakWarning};
   fitAutoP = null; bsResults = null;
 
-  document.getElementById('fitDataStatus').textContent = `Generated n=${n}, calib=${calib}, hold-out=${n-calib}`;
+  const statusEl = document.getElementById('fitDataStatus');
+  statusEl.textContent = `Generated n=${n}, calib=${calib}, hold-out=${n-calib}`;
+  statusEl.style.color = peakWarning ? '#dc2626' : 'var(--text-tertiary)';
+
+  // Show warning if peak outside calibration
+  let warnEl = document.getElementById('fitCalibWarning');
+  if (!warnEl) {
+    warnEl = document.createElement('div');
+    warnEl.id = 'fitCalibWarning';
+    warnEl.style.cssText = 'font-size:12px;color:#dc2626;margin-top:6px;padding:6px 10px;background:#fee2e2;border-radius:6px;border:0.5px solid #dc2626';
+    document.getElementById('fitDataStatus').parentNode.appendChild(warnEl);
+  }
+  warnEl.textContent = peakWarning || '';
+  warnEl.style.display = peakWarning ? 'block' : 'none';
+
   document.getElementById('fitDataResults').style.display = 'block';
   document.getElementById('fitAutoResults').style.display = 'none';
   document.getElementById('fitForecastCard').style.display = 'none';
@@ -1210,7 +1266,8 @@ function generateData() {
     if(el){el.value=trueP[par.id];} if(sl){sl.value=trueP[par.id];}
   });
   updateManualFit();
-  document.getElementById('fitDataChartTitle').textContent = `${m.name} — n=${n}, seed=${seed}, noise=${noiseType}${noiseType==='negbinom'?', θ='+theta:''}`;
+  document.getElementById('fitDataChartTitle').textContent =
+    `${m.name} — n=${n}, seed=${seed}, noise=${noiseType}${noiseType==='negbinom'?', θ='+theta:noiseType==='normal'?', σ='+sigma:''}`;
 }
 
 /* ═══════════════════════════════════════
@@ -1284,15 +1341,21 @@ function updateManualFit() {
 ═══════════════════════════════════════ */
 function autoFit() {
   if (!fitObsData) { alert('Generate data first.'); return; }
-  const {t,y,calib,trueMu,theta,n} = fitObsData;
+  const {t,y,calib,trueMu,theta,sigma,n,estPeakT,estK,noiseType} = fitObsData;
   const lossType = document.getElementById('fitLoss').value;
   const m = FIT_MODELS[fitModelId];
   const yCalib = y.slice(0,calib), tCalib = t.slice(0,calib);
 
   document.getElementById('fitAutoStatus').textContent = 'Fitting (multi-start Nelder-Mead)…';
   setTimeout(()=>{
-    // Start from true params — realistic for teaching (in practice use grid search or domain knowledge)
-    const x0 = paramsToVec(getFitParams('ft_'), fitModelId);
+    // Build data-informed starting point
+    // Use true params as base, but override K and t_m with data-derived estimates
+    const trueVec = paramsToVec(getFitParams('ft_'), fitModelId);
+    const dataVec = trueVec.slice();
+    m.params.forEach((par,i) => {
+      if (par.id === 'K' || par.id === 'C0') dataVec[i] = Math.max(par.min, Math.min(par.max||1e9, estK));
+      if (par.id === 'tm') dataVec[i] = Math.max(par.min, Math.min(par.max||200, estPeakT));
+    });
 
     const objFn = vec => {
       const vc = clampParams(vec, fitModelId);
@@ -1301,9 +1364,27 @@ function autoFit() {
       return computeLoss(yCalib, fit, lossType, theta);
     };
 
-    // Multi-start: 8 starts with ±20% perturbation around true params
-    const bestVec = multiStartNM(objFn, x0, fitModelId, 8, 3000);
-    fitAutoP = vecToParams(bestVec, fitModelId);
+    // Multi-start from both data-informed and true-param starts
+    let bestVec = dataVec.slice();
+    let bestLoss = objFn(dataVec);
+
+    const starts = [dataVec, trueVec];
+    const rng = makePRNG(12345);
+    // Add 6 more perturbed starts around data-informed point
+    for (let s=0; s<6; s++) {
+      const xp = m.params.map((par,i) => {
+        const v = dataVec[i] * (0.75 + rng()*0.5);
+        return Math.max(par.min, Math.min(par.max||1e9, v));
+      });
+      starts.push(xp);
+    }
+
+    starts.forEach(x0 => {
+      const r = nelderMead(objFn, x0, {maxIter:3000});
+      if (r.loss < bestLoss) { bestVec = r.vec; bestLoss = r.loss; }
+    });
+
+    fitAutoP = vecToParams(clampParams(bestVec, fitModelId), fitModelId);
 
     const fitted = evalFitModel(fitModelId, fitAutoP, t);
     const yCalibF = fitted.slice(0,calib);
@@ -1388,7 +1469,7 @@ function showForecast() {
 ═══════════════════════════════════════ */
 function runBootstrap() {
   if (!fitAutoP) { alert('Run Auto-fit first.'); return; }
-  const {t,y,calib,n,theta,noiseType} = fitObsData;
+  const {t,y,calib,n,theta,sigma,noiseType} = fitObsData;
   const M = 300;
   const lossType = document.getElementById('fitLoss').value;
   const m = FIT_MODELS[fitModelId];
@@ -1407,7 +1488,11 @@ function runBootstrap() {
     const batchSize = 10;
     for (let b=0; b<batchSize && start+b<M; b++) {
       const rng = makePRNG(start+b+1000);
-      const ySim = fittedTrue.map(mu => noiseType==='poisson' ? poissonSample(mu,rng) : nbSample(mu,theta,rng));
+      const ySim = fittedTrue.map(mu => {
+        if (noiseType==='poisson') return poissonSample(mu,rng);
+        if (noiseType==='negbinom') return nbSample(mu,theta,rng);
+        return Math.round(normalSample(mu,sigma,rng));
+      });
       const ySimCalib = ySim.slice(0,calib);
       const objFn = vec=>{
         const vc=clampParams(vec,fitModelId);
@@ -1524,7 +1609,7 @@ function runIdentScan() {
   const nVals = [10, 15, 20, 30, 50];
   const M = 100;
   const lossType = document.getElementById('fitLoss').value;
-  const {trueMu, trueP, theta, noiseType, n} = fitObsData;
+  const {trueMu, trueP, theta, sigma, noiseType, n} = fitObsData;
   const m = FIT_MODELS[fitModelId];
 
   document.getElementById('identBtn').disabled = true;
@@ -1548,7 +1633,11 @@ function runIdentScan() {
     function doBatch(start) {
       for (let b=0; b<10&&start+b<M; b++) {
         const rng = makePRNG(nIdx*10000+start+b);
-        const ySim = mu_nv.map(mu=>noiseType==='poisson'?poissonSample(mu,rng):nbSample(mu,theta,rng));
+        const ySim = mu_nv.map(mu=>{
+          if(noiseType==='poisson') return poissonSample(mu,rng);
+          if(noiseType==='negbinom') return nbSample(mu,theta,rng);
+          return Math.round(normalSample(mu,sigma,rng));
+        });
         const objFn = vec=>{
           const vc=clampParams(vec,fitModelId),p=vecToParams(vc,fitModelId);
           const fit=evalFitModel(fitModelId,p,tArr);
@@ -1605,6 +1694,7 @@ window.onload = () => {
   buildUI('logistic');
   document.querySelector('#modelPills .pill-btn:nth-child(4)').classList.add('active');
   setFitModel('richards', document.querySelector('#fitModelPills .pill-btn:nth-child(2)'));
+  toggleNoiseParams();
 };
 </script>
 </body>
