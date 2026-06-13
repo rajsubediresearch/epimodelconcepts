@@ -29,6 +29,22 @@
     .kv-card .kv-value{font-size:18px;font-weight:500;color:var(--text);font-family:var(--font-mono)}
     .kv-card .kv-sub{font-size:11px;color:var(--text-secondary);margin-top:2px}
     .nest-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:20px;background:var(--bg-secondary);border:0.5px solid var(--border-med);color:var(--text-tertiary);margin-left:6px;vertical-align:middle}
+    .page-tabs{display:flex;gap:0;border-bottom:1px solid var(--border-med);margin-bottom:1.25rem}
+    .page-tab{font-size:13px;font-family:var(--font);font-weight:500;padding:8px 20px;border:none;background:none;color:var(--text-tertiary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.15s}
+    .page-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+    .page-tab:hover{color:var(--text)}
+    .page-tab-panel{display:none}.page-tab-panel.active{display:block}
+    .math-box{background:var(--bg-secondary);border:0.5px solid var(--border-med);border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:12px;color:var(--text-secondary);line-height:1.7;margin-top:8px}
+    .math-box strong{color:var(--text)}
+    .traffic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-top:8px}
+    .traffic-card{border-radius:var(--radius-md);padding:0.6rem 0.8rem;font-size:12px}
+    .traffic-card .tc-param{font-weight:500;margin-bottom:2px}
+    .traffic-card .tc-cv{font-family:var(--font-mono);font-size:14px;font-weight:500}
+    .tc-green{background:#d1fae5;border:0.5px solid #059669;color:#065f46}
+    .tc-yellow{background:#fef3c7;border:0.5px solid #d97706;color:#92400e}
+    .tc-red{background:#fee2e2;border:0.5px solid #dc2626;color:#7f1d1d}
+    .progress-bar{height:4px;background:var(--bg-secondary);border-radius:2px;overflow:hidden;margin-top:6px}
+    .progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.1s}
   </style>
 </head>
 <body>
@@ -49,6 +65,14 @@
     <p>Interactive simulator for growth curve models — from simple exponential growth to the Generalized Richards Model (GRM). Adjust parameters and run to see how each model shapes an epidemic curve. Example presets cover common outbreak patterns. Use the log-scale toggle and growth rate panel to build intuition for how each model behaves across its full parameter range.</p>
   </div>
 
+  <div class="page-tabs">
+    <button class="page-tab active" onclick="switchTab('sim',this)">Simulation explorer</button>
+    <button class="page-tab" onclick="switchTab('fit',this)">Fitting & forecasting</button>
+  </div>
+
+  <!-- ═══════ TAB 1: SIMULATION EXPLORER ═══════ -->
+  <div id="tab-sim" class="page-tab-panel active">
+
   <div class="card">
     <div class="section-label">Model</div>
     <div class="pill-group" id="modelPills">
@@ -61,13 +85,10 @@
       <button class="pill-btn" onclick="setModel('grm',this)">GRM</button>
     </div>
     <div id="modelDescription" class="info-box" style="margin-top:8px;font-size:13px"></div>
-
     <div class="inner-divider">Example presets</div>
     <div class="preset-grid" id="presetGrid"></div>
-
     <div class="inner-divider">Parameters</div>
     <div class="param-grid" id="paramGrid"></div>
-
     <div class="inner-divider">Simulation</div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
       <div class="param-card" style="flex:1;min-width:180px">
@@ -92,7 +113,6 @@
   </div>
 
   <div id="resultsArea" style="display:none">
-
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div class="section-label" id="chartTitle">Epidemic curve</div>
@@ -100,28 +120,23 @@
       </div>
       <div id="simChart" style="width:100%;height:380px"></div>
     </div>
-
     <div class="card">
       <div class="section-label">Instantaneous growth rate r(t)</div>
       <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">d/dt [ln i(t)] — positive = growing, zero = peak, negative = declining</div>
       <div id="growthRateChart" style="width:100%;height:240px"></div>
     </div>
-
     <div class="card">
       <div class="section-label">Key quantities</div>
       <div class="kv-grid" id="kvGrid"></div>
     </div>
-
     <div class="interp-card" id="interpCard">
       <div class="section-label">Auto-interpretation</div>
       <div id="interpText"></div>
     </div>
-
     <div class="card">
       <div class="section-label">Model equations</div>
       <div id="equationsBox"></div>
     </div>
-
   </div>
 
   <!-- Model hierarchy reference -->
@@ -146,6 +161,206 @@
       <div class="cb-sowhat">Phenomenological models describe the shape of an epidemic curve without assuming a transmission mechanism. They are fast to fit, easy to interpret, and well-suited for short-horizon forecasting when only case counts are available. Their main limitation is that parameters have no direct mechanistic meaning — unlike R₀ in compartmental models — and they cannot capture interventions, multiple waves, or population structure without extension.</div>
     </div>
   </div>
+
+  </div><!-- end tab-sim -->
+
+  <!-- ═══════ TAB 2: FITTING & FORECASTING ═══════ -->
+  <div id="tab-fit" class="page-tab-panel">
+
+  <!-- Section 1: Data generation -->
+  <div class="card">
+    <div class="section-label">1 — Generate synthetic data</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Choose a "true" model and parameters, add observation noise, and generate synthetic case counts. This simulates what surveillance data would look like if the epidemic followed this model exactly. The goal of fitting is to recover these true parameters from the noisy observations.</p>
+    <div class="math-box">
+      <strong>How synthetic data is generated:</strong> The true model produces a deterministic incidence curve I(t). Observed counts Y_t are then drawn from a noise distribution around that curve:
+      Poisson: Y_t ~ Poisson(I(t)) — variance = mean, appropriate for well-reported outbreaks.
+      Negative Binomial: Y_t ~ NegBin(I(t), θ) — variance = I(t) + I(t)²/θ, appropriate when clustering or reporting heterogeneity inflates variance. Smaller θ = more overdispersion.
+    </div>
+
+    <div class="inner-divider">True model</div>
+    <div class="pill-group" id="fitModelPills">
+      <button class="pill-btn" onclick="setFitModel('logistic',this)">Logistic</button>
+      <button class="pill-btn active" onclick="setFitModel('richards',this)">Richards</button>
+      <button class="pill-btn" onclick="setFitModel('grm',this)">GRM</button>
+    </div>
+    <div id="fitModelDesc" class="info-box" style="margin-top:8px;font-size:13px"></div>
+
+    <div class="inner-divider">True parameters</div>
+    <div class="param-grid" id="fitTrueParams"></div>
+
+    <div class="inner-divider">Data settings</div>
+    <div class="param-grid">
+      <div class="param-card">
+        <label>n (observations)</label>
+        <input type="number" id="fitN" value="30" min="5" max="100"
+          oninput="clampOnKeyDirect(this,5,100)">
+        <input type="range" id="fitNs" value="30" min="5" max="100" step="1" oninput="document.getElementById('fitN').value=this.value">
+        <div class="param-hint">Total time periods</div>
+      </div>
+      <div class="param-card">
+        <label>Calibration window</label>
+        <input type="number" id="fitCalib" value="20" min="3" max="95"
+          oninput="clampOnKeyDirect(this,3,95)">
+        <input type="range" id="fitCalibs" value="20" min="3" max="95" step="1" oninput="document.getElementById('fitCalib').value=this.value">
+        <div class="param-hint">Periods used for fitting; remainder = hold-out</div>
+      </div>
+      <div class="param-card">
+        <label>Noise type</label>
+        <select id="fitNoise" style="width:100%;font-size:13px;padding:6px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg);color:var(--text)">
+          <option value="poisson">Poisson</option>
+          <option value="negbinom" selected>Negative Binomial</option>
+        </select>
+        <div class="param-hint">Observation error distribution</div>
+      </div>
+      <div class="param-card">
+        <label>θ (NB dispersion)</label>
+        <input type="number" id="fitTheta" value="5" min="0.5" max="100" step="0.5"
+          oninput="clampOnKeyDirect(this,0.5,100)">
+        <input type="range" id="fitThetas" value="5" min="0.5" max="100" step="0.5" oninput="document.getElementById('fitTheta').value=this.value">
+        <div class="param-hint">θ→∞ ≈ Poisson; θ&lt;1 = high overdispersion</div>
+      </div>
+      <div class="param-card">
+        <label>Random seed</label>
+        <input type="number" id="fitSeed" value="42" min="1" max="9999">
+        <div class="param-hint">For reproducibility</div>
+      </div>
+    </div>
+    <div style="margin-top:0.75rem">
+      <button class="btn-primary" onclick="generateData()">Generate data</button>
+      <span id="fitDataStatus" style="font-size:12px;color:var(--text-tertiary);margin-left:10px"></span>
+    </div>
+  </div>
+
+  <div id="fitDataResults" style="display:none">
+
+  <!-- Data chart -->
+  <div class="card">
+    <div class="section-label" id="fitDataChartTitle">Synthetic epidemic data</div>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Blue dots = calibration observations. Red dots = hold-out (forecast window). Green dashed = true mean I(t).</p>
+    <div id="fitDataChart" style="width:100%;height:340px"></div>
+  </div>
+
+  <!-- Section 2: Manual fitting -->
+  <div class="card">
+    <div class="section-label">2 — Manual fitting</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Adjust parameters below and watch the fitted curve update on the chart. Try to minimize the loss function by eye — this builds intuition for what fitting algorithms do automatically.</p>
+    <div class="math-box">
+      <strong>Loss functions:</strong>
+      SSE (Sum of Squared Errors): L = Σ (Y_t − Î(t))². Simple, penalizes large deviations. Equivalent to MLE under Gaussian errors.
+      Poisson deviance: L = −2 Σ [Y_t · ln(Î(t)) − Î(t)]. The correct likelihood for Poisson counts. Minimizing = maximizing Poisson log-likelihood.
+      NB deviance: L = −2 Σ [Y_t · ln(μ_t) − (Y_t+θ)·ln(1 + μ_t/θ)]. Correct for overdispersed counts. Preferred for real outbreak data.
+    </div>
+    <div class="inner-divider">Loss function</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <select id="fitLoss" style="font-size:13px;padding:6px 10px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg);color:var(--text)" onchange="updateManualFit()">
+        <option value="sse">SSE</option>
+        <option value="poisson" selected>Poisson deviance</option>
+        <option value="negbinom">NB deviance</option>
+      </select>
+    </div>
+    <div class="inner-divider">Parameters to fit</div>
+    <div class="param-grid" id="fitManualParams"></div>
+    <div class="kv-grid" id="fitManualMetrics" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Section 3: Auto-fit -->
+  <div class="card">
+    <div class="section-label">3 — Auto-fit (Nelder-Mead optimizer)</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Click to run the Nelder-Mead simplex optimizer. It searches parameter space to minimize the selected loss function — the same principle used by standard fitting software, without requiring gradient computation.</p>
+    <div class="math-box">
+      <strong>Nelder-Mead in plain language:</strong> Start with a simplex (triangle in 2D, tetrahedron in 3D, etc.) of parameter guesses. At each step, reflect the worst-performing vertex through the centroid of the others. If the reflected point is better, expand; if worse, contract; if very bad, shrink the whole simplex toward the best point. Repeat until the simplex is tiny (convergence). Fast and robust for low-dimensional problems (≤6 parameters) — no gradients needed. Standard software implementations include scipy.optimize.minimize (Python), optim() (R), fminsearch (MATLAB), and Optim.jl (Julia).
+    </div>
+    <div style="margin-top:0.75rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-primary" onclick="autoFit()">Auto-fit</button>
+      <span id="fitAutoStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
+    </div>
+    <div id="fitAutoResults" style="display:none;margin-top:12px">
+      <div class="kv-grid" id="fitAutoMetrics"></div>
+      <div class="param-grid" id="fitAutoParams" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- Section 4: Forecast -->
+  <div class="card" id="fitForecastCard" style="display:none">
+    <div class="section-label">4 — Forecast performance</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Fitted curve extrapolated into the hold-out window. Metrics compare fitted values against true mean μ(t) — in real research, you would compare against observed counts.</p>
+    <div class="math-box">
+      <strong>Forecast metrics:</strong>
+      MAE = (1/h) Σ |μ(t) − Î(t)| — mean absolute error, robust, same units as data.
+      RMSE = √[(1/h) Σ (μ(t) − Î(t))²] — penalizes large errors more than MAE.
+      MAPE = (100/h) Σ |μ(t)−Î(t)|/μ(t) — scale-free percentage error.
+      AIC = n·ln(SSE/n) + 2k — penalizes model complexity (k = number of parameters). Lower = better.
+      BIC = n·ln(SSE/n) + k·ln(n) — stronger penalty than AIC; favors simpler models more as n grows.
+      For real research — coverage, WIS, and probabilistic scoring — use parametric bootstrap CIs in standard statistical computing environments.
+    </div>
+    <div id="fitForecastChart" style="width:100%;height:320px;margin-top:10px"></div>
+    <div class="kv-grid" id="fitForecastMetrics" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Section 5: Bootstrap -->
+  <div class="card">
+    <div class="section-label">5 — Bootstrap parameter uncertainty (M=300)</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Parametric bootstrap: simulate M=300 synthetic datasets from the auto-fitted model, refit to each, and collect the distribution of parameter estimates. The histogram shows the sampling distribution — how much estimates vary across datasets of this size.</p>
+    <div class="math-box">
+      <strong>Parametric bootstrap in plain language:</strong>
+      1. Fit the model to observed data → get parameter estimates (r̂, K̂, p̂, â).
+      2. Use those estimates to simulate M new synthetic datasets from the same noise model.
+      3. Refit the model to each synthetic dataset → collect M sets of estimates.
+      4. The histogram of each parameter's estimates is an empirical approximation to its sampling distribution.
+      5. The 2.5th–97.5th percentiles give a 95% bootstrap CI — no distributional assumptions required.
+      Bias = mean(bootstrap estimates) − point estimate. If non-zero, the estimator is biased for this n.
+      For publication-quality uncertainty: use M≥1000 with standard implementations in your preferred computing environment.
+    </div>
+    <div style="margin-top:0.75rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-primary" onclick="runBootstrap()" id="bsBtn">Run bootstrap (M=300)</button>
+      <span id="bsStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
+    </div>
+    <div class="progress-bar" id="bsProgress" style="display:none"><div class="progress-fill" id="bsFill" style="width:0%"></div></div>
+    <div id="bsResults" style="display:none;margin-top:12px">
+      <div class="kv-grid" id="bsSummary"></div>
+      <div id="bsHistCharts" style="margin-top:12px"></div>
+      <div id="bsForecastCIChart" style="width:100%;height:300px;margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Section 6: Identifiability scan -->
+  <div class="card">
+    <div class="section-label">6 — Practical identifiability scan (vary n)</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Runs M=100 bootstrap refits at each of n = 10, 15, 20, 30, 50 time points. The coefficient of variation (CV = SD/mean) of each parameter's bootstrap distribution measures practical identifiability — how precisely that parameter can be estimated from data of that length.</p>
+    <div class="math-box">
+      <strong>Structural vs practical identifiability:</strong>
+      Structural identifiability: can the parameters be uniquely determined from perfect, noise-free data? A model may be structurally identifiable yet practically unidentifiable from short or noisy real data.
+      Practical identifiability: can the parameters be precisely estimated from realistic data? Measured by CV of bootstrap distribution. CV &lt; 0.10: well identified (green). CV 0.10–0.30: moderate (yellow). CV &gt; 0.30: poorly identified (red) — estimates are highly variable, suggesting more data or fewer parameters are needed.
+      GRM with small n: K and a are typically the hardest to identify — their histograms remain wide even when r and p have converged. This is why fitting GRM to fewer than ~15–20 data points is not recommended.
+    </div>
+    <div style="margin-top:0.75rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-primary" onclick="runIdentScan()" id="identBtn">Run identifiability scan</button>
+      <span id="identStatus" style="font-size:12px;color:var(--text-tertiary)"></span>
+    </div>
+    <div class="progress-bar" id="identProgress" style="display:none"><div class="progress-fill" id="identFill" style="width:0%"></div></div>
+    <div id="identResults" style="display:none;margin-top:12px"></div>
+  </div>
+
+  <!-- Section 7: Software reference -->
+  <div class="card">
+    <div class="section-label">7 — For real research: standard tools</div>
+    <div class="concept-box">
+      <div class="cb-definition"><strong>What this simulator teaches vs what to use in practice</strong>
+        This page demonstrates the concepts of fitting, forecasting, bootstrap uncertainty, and practical identifiability using in-browser simulation. The Nelder-Mead implementation here is intentionally simplified for teaching. For real research applications — fitting to observed outbreak data, publication-quality CIs, model selection, and probabilistic forecasting — use standard implementations in your preferred computing environment.
+      </div>
+      <div class="cb-interpretation"><strong>Standard approaches by task</strong>
+        Fitting (MLE/NLS): gradient-free optimizers (Nelder-Mead, BFGS) or nonlinear least squares, available in all major statistical computing environments (R, Python, Julia, MATLAB, SAS, Stata).
+        Bootstrap CIs: parametric bootstrap with M≥1000; standard in all environments. Profile likelihood CIs: more accurate than Wald CIs, available via likelihood profiling functions.
+        Model selection: AIC, BIC, and likelihood ratio tests for nested models.
+        Probabilistic forecasting: forecast ensembles, prediction intervals from bootstrap, WIS scoring.
+        Structural identifiability analysis: symbolic methods (STRIKE-GOLDD, StructuralIdentifiability.jl) for ODE-based models.
+      </div>
+      <div class="cb-sowhat">The workflow demonstrated here — generate → fit → forecast → bootstrap → identifiability — is the same workflow used in published epidemic modeling studies. The difference between this simulator and a research pipeline is computational scale (M=300 vs M=1000+), real data (surveillance counts vs synthetic), and rigorous uncertainty propagation through all model components.</div>
+    </div>
+  </div>
+
+  </div><!-- end fitDataResults -->
+  </div><!-- end tab-fit -->
 
 </main>
 <footer class="site-footer">EpiModelConcepts · <a href="https://github.com/rajsubediresearch/epimodelconcepts" target="_blank">GitHub</a></footer>
@@ -712,11 +927,648 @@ function showEquations(m) {
 }
 
 /* ═══════════════════════════════════════
+   TAB SWITCHING
+═══════════════════════════════════════ */
+function switchTab(id, btn) {
+  document.querySelectorAll('.page-tab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.page-tab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+id).classList.add('active');
+}
+
+/* ═══════════════════════════════════════
+   FITTING TAB — STATE
+═══════════════════════════════════════ */
+let fitModelId = 'richards';
+let fitObsData = null;   // {t, y, trueMu, calib, n}
+let fitAutoP   = null;   // auto-fitted parameters
+let bsResults  = null;   // bootstrap results
+
+/* ═══════════════════════════════════════
+   SEEDED PRNG (Mulberry32)
+═══════════════════════════════════════ */
+function makePRNG(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s += 0x6D2B79F5;
+    let t = Math.imul(s ^ s>>>15, 1|s);
+    t = t + Math.imul(t ^ t>>>7, 61|t) ^ t;
+    return ((t ^ t>>>14) >>> 0) / 4294967296;
+  };
+}
+function poissonSample(lam, rng) {
+  if (lam <= 0) return 0;
+  if (lam > 50) {
+    let u,v,s; do{u=2*rng()-1;v=2*rng()-1;s=u*u+v*v;}while(s>=1||s===0);
+    return Math.max(0, Math.round(lam + Math.sqrt(-2*Math.log(s)/s)*u*Math.sqrt(lam)));
+  }
+  let L=Math.exp(-lam),k=0,p=1; do{k++;p*=rng();}while(p>L); return k-1;
+}
+function gammaSample(shape, rng) {
+  if (shape < 1) return gammaSample(1+shape, rng) * Math.pow(rng(), 1/shape);
+  const d=shape-1/3, c=1/Math.sqrt(9*d);
+  while(true){let x,v;do{x=(rng()*2-1)*3;}while(x<=-1/c);v=Math.pow(1+c*x,3);const u=rng();if(u<1-0.0331*(x*x)*(x*x))return d*v;if(Math.log(u)<0.5*x*x+d*(1-v+Math.log(v)))return d*v;}
+}
+function nbSample(mu, theta, rng) {
+  if (mu <= 0) return 0;
+  const lam = gammaSample(theta, rng) * (mu/theta);
+  return poissonSample(lam, rng);
+}
+
+/* ═══════════════════════════════════════
+   FIT MODELS (only fittable ones in Tab 2)
+═══════════════════════════════════════ */
+const FIT_MODELS = {
+  logistic: {
+    name:'Logistic', desc:'Symmetric S-curve. Parameters: r, K, C₀.',
+    params:[
+      {id:'K', label:'K (final size)', value:1000, min:10, max:50000, step:10, hint:'Total epidemic size'},
+      {id:'r', label:'r (growth rate)', value:0.3, min:0.01, max:3, step:0.01, hint:'Intrinsic growth rate'},
+      {id:'C0', label:'C₀ (initial)', value:5, min:0.1, max:500, step:1, hint:'Cumulative cases at t=0'},
+    ],
+    fn:(t,p)=>{const A=(p.K-p.C0)/Math.max(p.C0,1e-6);return Math.max(1e-6,p.K/(1+A*Math.exp(-p.r*t)));},
+    isCum:true
+  },
+  richards: {
+    name:'Richards', desc:'Asymmetric S-curve. Parameters: r, K, t_m, a.',
+    params:[
+      {id:'K',  label:'K (final size)',  value:1000, min:10, max:50000, step:10,  hint:'Total epidemic size'},
+      {id:'r',  label:'r (growth rate)', value:0.3,  min:0.01, max:3,   step:0.01,hint:'Rate at inflection'},
+      {id:'tm', label:'t_m (peak time)', value:20,   min:1, max:200,    step:0.5, hint:'Time of peak incidence'},
+      {id:'a',  label:'a (asymmetry)',   value:1.0,  min:0.05, max:5,   step:0.05,hint:'a=1 → logistic; a<1 → fast rise'},
+    ],
+    fn:(t,p)=>{const as=Math.max(p.a,0.01);const inner=1+as*Math.exp(-p.r*as*(t-p.tm));return Math.max(1e-6,p.K/Math.pow(Math.max(inner,1e-10),1/as));},
+    isCum:true
+  },
+  grm: {
+    name:'GRM', desc:'Most flexible. Parameters: r, K, p, a, I₀.',
+    params:[
+      {id:'K',  label:'K (final size)',   value:1000, min:10, max:50000, step:10,  hint:'Total epidemic size'},
+      {id:'r',  label:'r (growth rate)',  value:0.5,  min:0.01, max:5,   step:0.05,hint:'Growth rate constant'},
+      {id:'p',  label:'p (scaling)',      value:0.9,  min:0.01, max:1,   step:0.01,hint:'p=1 → Richards; p<1 → sub-exp'},
+      {id:'a',  label:'a (asymmetry)',    value:1.2,  min:0.05, max:10,  step:0.05,hint:'a=1 → symmetric'},
+      {id:'I0', label:'I₀ (seed cases)', value:3,    min:0.1, max:500,   step:1,   hint:'Initial cumulative cases'},
+    ],
+    fn:(t,p)=>{
+      const Ks=Math.max(p.K,1),ps=Math.max(0.01,Math.min(p.p,1.0)),as=Math.max(0.01,p.a),C0=Math.max(p.I0,1e-6);
+      function dC(C){return p.r*Math.pow(Math.max(C,1e-10),ps)*(1-Math.pow(Math.min(C/Ks,1-1e-10),as));}
+      if(t<=0)return Math.max(1e-6,dC(C0));
+      const steps=30,h=t/steps;let C=C0;
+      for(let i=0;i<steps;i++){const k1=dC(C),k2=dC(Math.max(C+h*k1/2,1e-10)),k3=dC(Math.max(C+h*k2/2,1e-10)),k4=dC(Math.max(C+h*k3,1e-10));C=Math.max(C+h*(k1+2*k2+2*k3+k4)/6,1e-10);if(C>=Ks){C=Ks;break;}}
+      return Math.max(1e-6,dC(C));
+    },
+    isCum:false
+  }
+};
+
+function setFitModel(id, btn) {
+  fitModelId = id;
+  document.querySelectorAll('#fitModelPills .pill-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const m = FIT_MODELS[id];
+  document.getElementById('fitModelDesc').textContent = m.desc;
+  buildFitParamGrid('fitTrueParams', m.params, 'ft_');
+  buildFitParamGrid('fitManualParams', m.params, 'fm_');
+}
+
+function buildFitParamGrid(gridId, params, prefix) {
+  document.getElementById(gridId).innerHTML = params.map(par=>`
+    <div class="param-card">
+      <label>${par.label}</label>
+      <input type="number" id="${prefix}${par.id}" value="${par.value}" min="${par.min}" max="${par.max}" step="${par.step}"
+        oninput="syncFitSlider('${prefix}${par.id}','${prefix}s${par.id}'); ${prefix==='fm_'?'updateManualFit()':''}">
+      <input type="range" id="${prefix}s${par.id}" value="${par.value}" min="${par.min}" max="${par.max}" step="${par.step}"
+        oninput="syncFitNum('${prefix}s${par.id}','${prefix}${par.id}'); ${prefix==='fm_'?'updateManualFit()':''}">
+      <div class="param-hint" style="font-size:11px;color:var(--text-tertiary);margin-top:3px">${par.hint||''}</div>
+    </div>`).join('');
+}
+
+function syncFitSlider(numId, sldId){const n=document.getElementById(numId),s=document.getElementById(sldId);if(s&&n)s.value=n.value;}
+function syncFitNum(sldId, numId){const n=document.getElementById(numId),s=document.getElementById(sldId);if(n&&s)n.value=s.value;}
+function clampOnKeyDirect(el, mn, mx){setTimeout(()=>{let v=parseFloat(el.value);if(isNaN(v))v=mn;el.value=Math.max(mn,Math.min(mx,v));},0);}
+
+function getFitParams(prefix) {
+  const m = FIT_MODELS[fitModelId];
+  const p = {};
+  m.params.forEach(par=>{p[par.id]=parseFloat(document.getElementById(prefix+par.id).value)||par.value;});
+  return p;
+}
+
+/* ═══════════════════════════════════════
+   MODEL CURVE EVALUATION
+═══════════════════════════════════════ */
+function evalFitModel(modelId, params, tArr) {
+  const m = FIT_MODELS[modelId];
+  if (m.isCum) {
+    const cum = tArr.map(t=>m.fn(t,params));
+    return cum.map((v,i)=>i===0?Math.max(0,cum[1]-cum[0]):Math.max(0,v-cum[i-1]));
+  } else {
+    return tArr.map(t=>Math.max(0,m.fn(t,params)));
+  }
+}
+
+/* ═══════════════════════════════════════
+   LOSS FUNCTIONS
+═══════════════════════════════════════ */
+function computeLoss(yObs, yFit, lossType, theta) {
+  const n = yObs.length;
+  let loss = 0;
+  for (let i=0; i<n; i++) {
+    const y = yObs[i], mu = Math.max(yFit[i], 1e-6);
+    if (lossType==='sse') loss += (y-mu)**2;
+    else if (lossType==='poisson') loss += -2*(y*Math.log(mu)-mu);
+    else if (lossType==='negbinom') {
+      const th = theta||5;
+      loss += -2*(y*Math.log(mu/(mu+th)) + th*Math.log(th/(mu+th)));
+    }
+  }
+  return isFinite(loss)?loss:1e12;
+}
+
+/* ═══════════════════════════════════════
+   NELDER-MEAD OPTIMIZER
+═══════════════════════════════════════ */
+function nelderMead(objFn, x0, opts) {
+  const {maxIter=2000, tol=1e-8} = opts||{};
+  const n = x0.length;
+  // Build initial simplex
+  let simplex = [x0.slice()];
+  for (let i=0;i<n;i++){const s=x0.slice();s[i]*=(1+0.05+(Math.abs(s[i])<1e-6?0.05:0));simplex.push(s);}
+  let fvals = simplex.map(s=>objFn(s));
+
+  for (let iter=0; iter<maxIter; iter++) {
+    // Sort
+    const idx = fvals.map((_,i)=>i).sort((a,b)=>fvals[a]-fvals[b]);
+    simplex = idx.map(i=>simplex[i]); fvals = idx.map(i=>fvals[i]);
+    if (fvals[n]-fvals[0] < tol) break;
+
+    // Centroid (exclude worst)
+    const cen = Array(n).fill(0);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++) cen[j]+=simplex[i][j]/n;
+
+    // Reflect
+    const ref = cen.map((c,j)=>c+1.0*(c-simplex[n][j]));
+    const fRef = objFn(ref);
+    if (fRef < fvals[0]) {
+      const exp = cen.map((c,j)=>c+2.0*(c-simplex[n][j]));
+      const fExp = objFn(exp);
+      if (fExp < fRef){simplex[n]=exp;fvals[n]=fExp;}else{simplex[n]=ref;fvals[n]=fRef;}
+    } else if (fRef < fvals[n-1]) {
+      simplex[n]=ref; fvals[n]=fRef;
+    } else {
+      const con = cen.map((c,j)=>c+0.5*(simplex[n][j]-c));
+      const fCon = objFn(con);
+      if (fCon < fvals[n]) {simplex[n]=con;fvals[n]=fCon;}
+      else {
+        for(let i=1;i<=n;i++){simplex[i]=simplex[i].map((v,j)=>simplex[0][j]+0.5*(v-simplex[0][j]));fvals[i]=objFn(simplex[i]);}
+      }
+    }
+  }
+  return simplex[0];
+}
+
+function paramsToVec(params, modelId) {
+  return FIT_MODELS[modelId].params.map(par=>params[par.id]);
+}
+function vecToParams(vec, modelId) {
+  const p={};FIT_MODELS[modelId].params.forEach((par,i)=>{p[par.id]=vec[i];});return p;
+}
+
+function clampParams(vec, modelId) {
+  return FIT_MODELS[modelId].params.map((par,i)=>Math.max(par.min, Math.min(par.max||1e9, vec[i])));
+}
+
+/* ═══════════════════════════════════════
+   DATA GENERATION
+═══════════════════════════════════════ */
+function generateData() {
+  const m = FIT_MODELS[fitModelId];
+  const trueP = getFitParams('ft_');
+  const n = parseInt(document.getElementById('fitN').value)||30;
+  const calib = Math.min(parseInt(document.getElementById('fitCalib').value)||20, n-1);
+  const noiseType = document.getElementById('fitNoise').value;
+  const theta = parseFloat(document.getElementById('fitTheta').value)||5;
+  const seed = parseInt(document.getElementById('fitSeed').value)||42;
+  const rng = makePRNG(seed);
+
+  const tArr = Array.from({length:n},(_,i)=>i+1);
+  const trueMu = evalFitModel(fitModelId, trueP, tArr);
+  const y = trueMu.map(mu => noiseType==='poisson' ? poissonSample(mu,rng) : nbSample(mu,theta,rng));
+
+  fitObsData = {t:tArr, y, trueMu, calib, n, trueP, theta, noiseType};
+  fitAutoP = null; bsResults = null;
+
+  document.getElementById('fitDataStatus').textContent = `Generated n=${n}, calib=${calib}, hold-out=${n-calib}`;
+  document.getElementById('fitDataResults').style.display = 'block';
+  document.getElementById('fitAutoResults').style.display = 'none';
+  document.getElementById('fitForecastCard').style.display = 'none';
+  document.getElementById('bsResults').style.display = 'none';
+  document.getElementById('identResults').style.display = 'none';
+
+  plotFitData(fitObsData, null, null);
+
+  // Initialize manual fit params to true params
+  m.params.forEach(par=>{
+    const el=document.getElementById('fm_'+par.id), sl=document.getElementById('fm_s'+par.id);
+    if(el){el.value=trueP[par.id];} if(sl){sl.value=trueP[par.id];}
+  });
+  updateManualFit();
+  document.getElementById('fitDataChartTitle').textContent = `${m.name} — n=${n}, seed=${seed}, noise=${noiseType}${noiseType==='negbinom'?', θ='+theta:''}`;
+}
+
+/* ═══════════════════════════════════════
+   PLOT FIT DATA
+═══════════════════════════════════════ */
+function plotFitData(data, manualFit, autoFit, bsCI) {
+  if (!data) return;
+  const {t,y,trueMu,calib} = data;
+  const traces = [];
+
+  // CI ribbon from bootstrap
+  if (bsCI) {
+    traces.push({x:[...t,...t.slice().reverse()],y:[...bsCI.hi,...bsCI.lo.slice().reverse()],
+      fill:'toself',fillcolor:'rgba(124,92,191,0.12)',line:{color:'transparent'},name:'95% bootstrap CI',showlegend:true,hoverinfo:'skip'});
+  }
+
+  // True mean
+  traces.push({x:t,y:trueMu,mode:'lines',name:'True μ(t)',line:{color:'#1D9E75',width:2,dash:'dash'}});
+
+  // Manual fit
+  if (manualFit) traces.push({x:t,y:manualFit,mode:'lines',name:'Manual fit',line:{color:'#D97706',width:2}});
+
+  // Auto fit
+  if (autoFit) traces.push({x:t,y:autoFit,mode:'lines',name:'Auto-fit (Nelder-Mead)',line:{color:'#7C3AED',width:2.5}});
+
+  // Split line
+  traces.push({x:[calib+0.5,calib+0.5],y:[0,Math.max(...trueMu,...y)*1.1],
+    mode:'lines',name:'Calib / forecast split',line:{color:'#888',width:1.5,dash:'dot'},showlegend:true});
+
+  // Observations
+  traces.push({x:t,y,mode:'markers',name:'Observed counts',
+    marker:{color:t.map((_,i)=>i<calib?'#378ADD':'#C0392B'),size:6,opacity:0.85}});
+
+  Plotly.newPlot('fitDataChart', traces, {
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui',size:12,color:'#5a5a56'},
+    xaxis:{title:'Time (periods)',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+    yaxis:{title:'Incidence (cases/period)',gridcolor:'rgba(0,0,0,0.06)',zeroline:false,rangemode:'tozero'},
+    legend:{orientation:'h',y:-0.22},
+    margin:{t:20,r:20,b:75,l:70}
+  },{responsive:true,displayModeBar:false});
+}
+
+/* ═══════════════════════════════════════
+   MANUAL FIT
+═══════════════════════════════════════ */
+function updateManualFit() {
+  if (!fitObsData) return;
+  const {t,y,calib,theta} = fitObsData;
+  const manP = getFitParams('fm_');
+  const lossType = document.getElementById('fitLoss').value;
+  const fitted = evalFitModel(fitModelId, manP, t);
+  const yCalib = y.slice(0,calib), fitCalib = fitted.slice(0,calib);
+  const loss = computeLoss(yCalib, fitCalib, lossType, theta);
+  const sse  = yCalib.reduce((s,v,i)=>s+(v-fitCalib[i])**2,0);
+  const mae  = yCalib.reduce((s,v,i)=>s+Math.abs(v-fitCalib[i]),0)/calib;
+  const k    = FIT_MODELS[fitModelId].params.length;
+  const aic  = calib*Math.log(sse/calib)+2*k;
+
+  document.getElementById('fitManualMetrics').innerHTML = [
+    {label:'Loss ('+lossType+')', value:loss.toFixed(2), sub:'On calibration window'},
+    {label:'MAE', value:mae.toFixed(2), sub:'Calibration window'},
+    {label:'AIC', value:aic.toFixed(1), sub:`k=${k} parameters`},
+  ].map(c=>`<div class="kv-card"><div class="kv-label">${c.label}</div><div class="kv-value" style="font-size:15px">${c.value}</div><div class="kv-sub">${c.sub}</div></div>`).join('');
+
+  plotFitData(fitObsData, fitted, fitAutoP?evalFitModel(fitModelId,fitAutoP,t):null, bsResults?bsResults.ci:null);
+}
+
+/* ═══════════════════════════════════════
+   AUTO FIT
+═══════════════════════════════════════ */
+function autoFit() {
+  if (!fitObsData) { alert('Generate data first.'); return; }
+  const {t,y,calib,trueMu,theta,n} = fitObsData;
+  const lossType = document.getElementById('fitLoss').value;
+  const m = FIT_MODELS[fitModelId];
+  const yCalib = y.slice(0,calib), tCalib = t.slice(0,calib);
+
+  document.getElementById('fitAutoStatus').textContent = 'Fitting…';
+  setTimeout(()=>{
+    const x0 = paramsToVec(getFitParams('ft_'), fitModelId); // start from true params (perturbed)
+    const x0p = x0.map(v=>v*(0.5+Math.random()*1.0)); // perturb start
+
+    const objFn = vec => {
+      const vc = clampParams(vec, fitModelId);
+      const p = vecToParams(vc, fitModelId);
+      const fit = evalFitModel(fitModelId, p, tCalib);
+      return computeLoss(yCalib, fit, lossType, theta);
+    };
+
+    const result = nelderMead(objFn, x0p, {maxIter:3000});
+    const bestVec = clampParams(result, fitModelId);
+    fitAutoP = vecToParams(bestVec, fitModelId);
+
+    const fitted = evalFitModel(fitModelId, fitAutoP, t);
+    const yCalibF = fitted.slice(0,calib);
+    const sse = yCalib.reduce((s,v,i)=>s+(v-yCalibF[i])**2,0);
+    const mae = yCalib.reduce((s,v,i)=>s+Math.abs(v-yCalibF[i]),0)/calib;
+    const k = m.params.length;
+    const aic = calib*Math.log(sse/calib)+2*k;
+    const bic = calib*Math.log(sse/calib)+k*Math.log(calib);
+
+    document.getElementById('fitAutoStatus').textContent = `Converged — MAE=${mae.toFixed(2)}, AIC=${aic.toFixed(1)}`;
+    document.getElementById('fitAutoResults').style.display = 'block';
+
+    // Compare true vs fitted params
+    document.getElementById('fitAutoParams').innerHTML = m.params.map(par=>{
+      const trueV = fitObsData.trueP[par.id];
+      const fitV = fitAutoP[par.id];
+      const bias = ((fitV-trueV)/trueV*100).toFixed(1);
+      return `<div class="kv-card">
+        <div class="kv-label">${par.label}</div>
+        <div class="kv-value" style="font-size:14px">${fitV.toFixed(3)}</div>
+        <div class="kv-sub">True: ${trueV} · Bias: ${bias}%</div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('fitAutoMetrics').innerHTML = [
+      {label:'MAE (calib)', value:mae.toFixed(2), sub:'Mean absolute error'},
+      {label:'AIC', value:aic.toFixed(1), sub:`k=${k}`},
+      {label:'BIC', value:bic.toFixed(1), sub:`n=${calib}`},
+    ].map(c=>`<div class="kv-card"><div class="kv-label">${c.label}</div><div class="kv-value" style="font-size:15px">${c.value}</div><div class="kv-sub">${c.sub}</div></div>`).join('');
+
+    plotFitData(fitObsData, null, fitted, null);
+    showForecast();
+  }, 20);
+}
+
+/* ═══════════════════════════════════════
+   FORECAST
+═══════════════════════════════════════ */
+function showForecast() {
+  if (!fitAutoP || !fitObsData) return;
+  const {t,y,trueMu,calib,n} = fitObsData;
+  const fitted = evalFitModel(fitModelId, fitAutoP, t);
+  const holdT = t.slice(calib), holdTrue = trueMu.slice(calib), holdFit = fitted.slice(calib);
+  const h = holdT.length;
+  if (h===0) return;
+
+  const mae  = holdTrue.reduce((s,v,i)=>s+Math.abs(v-holdFit[i]),0)/h;
+  const rmse = Math.sqrt(holdTrue.reduce((s,v,i)=>s+(v-holdFit[i])**2,0)/h);
+  const mape = holdTrue.reduce((s,v,i)=>v>0?s+Math.abs((v-holdFit[i])/v):s,0)/h*100;
+  const sse  = trueMu.reduce((s,v,i)=>s+(v-fitted[i])**2,0);
+  const k    = FIT_MODELS[fitModelId].params.length;
+  const aic  = n*Math.log(sse/n)+2*k;
+  const bic  = n*Math.log(sse/n)+k*Math.log(n);
+
+  document.getElementById('fitForecastCard').style.display = 'block';
+  document.getElementById('fitForecastMetrics').innerHTML = [
+    {label:'MAE (hold-out)',  value:mae.toFixed(2),  sub:`Over ${h} periods`},
+    {label:'RMSE (hold-out)', value:rmse.toFixed(2), sub:'Penalizes large errors'},
+    {label:'MAPE (hold-out)', value:mape.toFixed(1)+'%', sub:'Scale-free'},
+    {label:'AIC (full)',  value:aic.toFixed(1), sub:`k=${k} params`},
+    {label:'BIC (full)',  value:bic.toFixed(1), sub:`n=${n}`},
+  ].map(c=>`<div class="kv-card"><div class="kv-label">${c.label}</div><div class="kv-value" style="font-size:15px">${c.value}</div><div class="kv-sub">${c.sub}</div></div>`).join('');
+
+  // Forecast chart
+  Plotly.newPlot('fitForecastChart',[
+    {x:t,y:trueMu,mode:'lines',name:'True μ(t)',line:{color:'#1D9E75',width:2,dash:'dash'}},
+    {x:t.slice(0,calib),y:fitted.slice(0,calib),mode:'lines',name:'Fitted (calib)',line:{color:'#7C3AED',width:2}},
+    {x:holdT,y:holdFit,mode:'lines',name:'Forecast (hold-out)',line:{color:'#C0392B',width:2,dash:'dot'}},
+    {x:t,y,mode:'markers',name:'Observed',marker:{color:t.map((_,i)=>i<calib?'#378ADD':'#C0392B'),size:5,opacity:0.8}},
+    {x:[calib+0.5,calib+0.5],y:[0,Math.max(...trueMu,...y)*1.1],mode:'lines',name:'Split',line:{color:'#888',width:1.5,dash:'dot'},showlegend:false},
+  ],{
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui',size:12,color:'#5a5a56'},
+    xaxis:{title:'Time (periods)',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+    yaxis:{title:'Cases/period',gridcolor:'rgba(0,0,0,0.06)',zeroline:false,rangemode:'tozero'},
+    legend:{orientation:'h',y:-0.25},
+    margin:{t:15,r:20,b:75,l:65}
+  },{responsive:true,displayModeBar:false});
+}
+
+/* ═══════════════════════════════════════
+   BOOTSTRAP
+═══════════════════════════════════════ */
+function runBootstrap() {
+  if (!fitAutoP) { alert('Run Auto-fit first.'); return; }
+  const {t,y,calib,n,theta,noiseType} = fitObsData;
+  const M = 300;
+  const lossType = document.getElementById('fitLoss').value;
+  const m = FIT_MODELS[fitModelId];
+  const fittedTrue = evalFitModel(fitModelId, fitAutoP, t);
+  const tCalib = t.slice(0,calib);
+  const x0 = paramsToVec(fitAutoP, fitModelId);
+
+  document.getElementById('bsBtn').disabled = true;
+  document.getElementById('bsStatus').textContent = `Running M=${M} refits…`;
+  document.getElementById('bsProgress').style.display = 'block';
+
+  const allParams = [];
+  let done = 0;
+
+  function runBatch(start) {
+    const batchSize = 10;
+    for (let b=0; b<batchSize && start+b<M; b++) {
+      const rng = makePRNG(start+b+1000);
+      const ySim = fittedTrue.map(mu => noiseType==='poisson' ? poissonSample(mu,rng) : nbSample(mu,theta,rng));
+      const ySimCalib = ySim.slice(0,calib);
+      const objFn = vec=>{
+        const vc=clampParams(vec,fitModelId);
+        const p=vecToParams(vc,fitModelId);
+        const fit=evalFitModel(fitModelId,p,tCalib);
+        return computeLoss(ySimCalib,fit,lossType,theta);
+      };
+      const x0p = x0.map(v=>v*(0.8+Math.random()*0.4));
+      const res = nelderMead(objFn, x0p, {maxIter:1500,tol:1e-6});
+      allParams.push(vecToParams(clampParams(res,fitModelId), fitModelId));
+      done++;
+    }
+    document.getElementById('bsFill').style.width = (done/M*100)+'%';
+    document.getElementById('bsStatus').textContent = `${done}/${M} refits…`;
+
+    if (done < M) {
+      setTimeout(()=>runBatch(done), 0);
+    } else {
+      finishBootstrap(allParams, fittedTrue);
+    }
+  }
+  runBatch(0);
+}
+
+function finishBootstrap(allParams, fittedMu) {
+  const {t,y,calib,n,trueP} = fitObsData;
+  const m = FIT_MODELS[fitModelId];
+
+  // Per-parameter stats
+  const paramStats = m.params.map(par=>{
+    const vals = allParams.map(p=>p[par.id]).filter(isFinite).sort((a,b)=>a-b);
+    const mean = vals.reduce((s,v)=>s+v,0)/vals.length;
+    const sd   = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length);
+    const ci95lo = vals[Math.floor(vals.length*0.025)];
+    const ci95hi = vals[Math.floor(vals.length*0.975)];
+    const bias = mean - fitAutoP[par.id];
+    return {id:par.id, label:par.label, vals, mean, sd, ci95lo, ci95hi, bias, trueV:trueP[par.id]};
+  });
+
+  // Bootstrap forecast CI — for each bootstrap param set, compute full curve
+  const forecastCurves = allParams.map(p=>evalFitModel(fitModelId,p,t));
+  const ciLo = t.map((_,i)=>{const vs=forecastCurves.map(c=>c[i]).sort((a,b)=>a-b);return vs[Math.floor(vs.length*0.025)];});
+  const ciHi = t.map((_,i)=>{const vs=forecastCurves.map(c=>c[i]).sort((a,b)=>a-b);return vs[Math.floor(vs.length*0.975)];});
+
+  // Coverage on hold-out
+  const holdTrue = fitObsData.trueMu.slice(calib);
+  const holdLo = ciLo.slice(calib), holdHi = ciHi.slice(calib);
+  const coverage = holdTrue.filter((v,i)=>v>=holdLo[i]&&v<=holdHi[i]).length/Math.max(holdTrue.length,1)*100;
+
+  bsResults = {paramStats, ci:{lo:ciLo,hi:ciHi}, coverage};
+
+  // Summary cards
+  document.getElementById('bsSummary').innerHTML = [
+    {label:'Bootstrap M', value:'300', sub:'Parametric bootstrap refits'},
+    {label:'95% CI coverage', value:coverage.toFixed(0)+'%', sub:`Hold-out window (target: 95%)`},
+  ].map(c=>`<div class="kv-card"><div class="kv-label">${c.label}</div><div class="kv-value" style="font-size:15px">${c.value}</div><div class="kv-sub">${c.sub}</div></div>`).join('');
+
+  // Histograms
+  const histContainer = document.getElementById('bsHistCharts');
+  histContainer.innerHTML = paramStats.map((ps,i)=>`<div id="bsHist_${i}" style="width:100%;height:200px;margin-bottom:8px"></div>`).join('');
+  paramStats.forEach((ps,i)=>{
+    const binCount = 20;
+    const lo=Math.min(...ps.vals),hi=Math.max(...ps.vals),bw=(hi-lo)/binCount||0.01;
+    const bins=Array(binCount).fill(0);
+    ps.vals.forEach(v=>{const bi=Math.min(binCount-1,Math.floor((v-lo)/bw));bins[bi]++;});
+    const xBins=bins.map((_,j)=>lo+j*bw+bw/2);
+    Plotly.newPlot('bsHist_'+i,[
+      {x:xBins,y:bins,type:'bar',name:'Bootstrap',marker:{color:'rgba(124,92,191,0.6)',line:{color:'#7C3AED',width:1}}},
+      {x:[fitAutoP[ps.id],fitAutoP[ps.id]],y:[0,Math.max(...bins)*1.1],mode:'lines',name:'Point estimate',line:{color:'#D97706',width:2}},
+      {x:[ps.trueV,ps.trueV],y:[0,Math.max(...bins)*1.1],mode:'lines',name:'True value',line:{color:'#059669',width:2,dash:'dash'}},
+    ],{
+      paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+      font:{family:'DM Sans, system-ui',size:11,color:'#5a5a56'},
+      title:{text:`${ps.label} — mean=${ps.mean.toFixed(3)}, SD=${ps.sd.toFixed(3)}, 95% CI [${ps.ci95lo.toFixed(3)}, ${ps.ci95hi.toFixed(3)}], bias=${ps.bias.toFixed(3)}`,font:{size:11}},
+      xaxis:{title:ps.id,gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+      yaxis:{title:'Count',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+      legend:{orientation:'h',y:-0.3},
+      margin:{t:40,r:20,b:65,l:50},
+      bargap:0.05
+    },{responsive:true,displayModeBar:false});
+  });
+
+  // Bootstrap CI on main chart
+  plotFitData(fitObsData, null, fittedMu, {lo:ciLo,hi:ciHi});
+
+  // Bootstrap forecast CI chart
+  Plotly.newPlot('bsForecastCIChart',[
+    {x:[...t,...t.slice().reverse()],y:[...ciHi,...ciLo.slice().reverse()],fill:'toself',fillcolor:'rgba(124,92,191,0.12)',line:{color:'transparent'},name:'95% bootstrap CI',hoverinfo:'skip'},
+    {x:t,y:fitObsData.trueMu,mode:'lines',name:'True μ(t)',line:{color:'#1D9E75',width:2,dash:'dash'}},
+    {x:t,y:fittedMu,mode:'lines',name:'Fitted',line:{color:'#7C3AED',width:2}},
+    {x:t,y:fitObsData.y,mode:'markers',name:'Observed',marker:{color:t.map((_,i)=>i<calib?'#378ADD':'#C0392B'),size:5,opacity:0.8}},
+    {x:[calib+0.5,calib+0.5],y:[0,Math.max(...fitObsData.trueMu)*1.15],mode:'lines',name:'Split',line:{color:'#888',width:1.5,dash:'dot'},showlegend:false},
+  ],{
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui',size:12,color:'#5a5a56'},
+    title:{text:'Forecast with 95% bootstrap CI',font:{size:12}},
+    xaxis:{title:'Time (periods)',gridcolor:'rgba(0,0,0,0.06)',zeroline:false},
+    yaxis:{title:'Cases/period',gridcolor:'rgba(0,0,0,0.06)',zeroline:false,rangemode:'tozero'},
+    legend:{orientation:'h',y:-0.25},
+    margin:{t:40,r:20,b:75,l:65}
+  },{responsive:true,displayModeBar:false});
+
+  document.getElementById('bsResults').style.display = 'block';
+  document.getElementById('bsProgress').style.display = 'none';
+  document.getElementById('bsBtn').disabled = false;
+  document.getElementById('bsStatus').textContent = `Done — 300 refits. Coverage: ${coverage.toFixed(0)}%`;
+}
+
+/* ═══════════════════════════════════════
+   IDENTIFIABILITY SCAN
+═══════════════════════════════════════ */
+function runIdentScan() {
+  if (!fitObsData) { alert('Generate data first.'); return; }
+  const nVals = [10, 15, 20, 30, 50];
+  const M = 100;
+  const lossType = document.getElementById('fitLoss').value;
+  const {trueMu, trueP, theta, noiseType, n} = fitObsData;
+  const m = FIT_MODELS[fitModelId];
+
+  document.getElementById('identBtn').disabled = true;
+  document.getElementById('identStatus').textContent = 'Scanning…';
+  document.getElementById('identProgress').style.display = 'block';
+
+  const allResults = [];
+  let totalDone = 0, totalWork = nVals.filter(nv=>nv<=trueMu.length).length * M;
+
+  function runNextN(nIdx) {
+    if (nIdx >= nVals.length) { finishIdentScan(allResults); return; }
+    const nv = nVals[nIdx];
+    if (nv > trueMu.length) { runNextN(nIdx+1); return; }
+
+    const tArr = Array.from({length:nv},(_,i)=>i+1);
+    const mu_nv = trueMu.slice(0,nv);
+    const x0 = paramsToVec(trueP, fitModelId);
+    const paramsArr = [];
+    let done = 0;
+
+    function doBatch(start) {
+      for (let b=0; b<10&&start+b<M; b++) {
+        const rng = makePRNG(nIdx*10000+start+b);
+        const ySim = mu_nv.map(mu=>noiseType==='poisson'?poissonSample(mu,rng):nbSample(mu,theta,rng));
+        const objFn = vec=>{
+          const vc=clampParams(vec,fitModelId),p=vecToParams(vc,fitModelId);
+          const fit=evalFitModel(fitModelId,p,tArr);
+          return computeLoss(ySim,fit,lossType,theta);
+        };
+        const x0p=x0.map(v=>v*(0.7+Math.random()*0.6));
+        const res=nelderMead(objFn,x0p,{maxIter:1000,tol:1e-6});
+        paramsArr.push(vecToParams(clampParams(res,fitModelId),fitModelId));
+        done++; totalDone++;
+      }
+      document.getElementById('identFill').style.width=(totalDone/totalWork*100)+'%';
+      document.getElementById('identStatus').textContent=`n=${nv}: ${done}/${M}…`;
+      if (done<M) setTimeout(()=>doBatch(done),0);
+      else {
+        allResults.push({nv, paramsArr});
+        runNextN(nIdx+1);
+      }
+    }
+    doBatch(0);
+  }
+  runNextN(0);
+}
+
+function finishIdentScan(allResults) {
+  const m = FIT_MODELS[fitModelId];
+  const {trueP} = fitObsData;
+
+  let html = '';
+  allResults.forEach(({nv, paramsArr})=>{
+    html += `<div style="margin-bottom:12px"><div class="section-label" style="margin-bottom:6px">n = ${nv}</div><div class="traffic-grid">`;
+    m.params.forEach(par=>{
+      const vals = paramsArr.map(p=>p[par.id]).filter(isFinite);
+      const mean = vals.reduce((s,v)=>s+v,0)/vals.length;
+      const sd   = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length);
+      const cv   = Math.abs(mean)>1e-6 ? sd/Math.abs(mean) : 99;
+      const cls  = cv<0.10?'tc-green':cv<0.30?'tc-yellow':'tc-red';
+      const label= cv<0.10?'Well identified':cv<0.30?'Moderate':'Poorly identified';
+      html += `<div class="traffic-card ${cls}"><div class="tc-param">${par.id}</div><div class="tc-cv">CV=${cv.toFixed(2)}</div><div style="font-size:10px;margin-top:2px">${label}</div></div>`;
+    });
+    html += '</div></div>';
+  });
+
+  document.getElementById('identResults').innerHTML = html;
+  document.getElementById('identResults').style.display = 'block';
+  document.getElementById('identProgress').style.display = 'none';
+  document.getElementById('identBtn').disabled = false;
+  document.getElementById('identStatus').textContent = 'Scan complete.';
+}
+
+/* ═══════════════════════════════════════
    INIT
 ═══════════════════════════════════════ */
 window.onload = () => {
   buildUI('logistic');
-  document.querySelector('#modelPills .pill-btn:nth-child(3)').classList.add('active');
+  document.querySelector('#modelPills .pill-btn:nth-child(4)').classList.add('active');
+  setFitModel('richards', document.querySelector('#fitModelPills .pill-btn:nth-child(2)'));
 };
 </script>
 </body>
