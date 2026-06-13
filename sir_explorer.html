@@ -90,8 +90,14 @@
   <div id="resultsArea" style="display:none">
 
     <div class="card">
-      <div class="section-label" id="chartTitle">Epidemic curves</div>
+      <div class="section-label" id="chartTitle">Compartment curves</div>
       <div id="simChart" style="width:100%;height:400px"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Incidence curve — new cases per day</div>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">The observable epidemic curve — what surveillance systems record. SIR: β·S·I/N. SEIR variants: σ·E (E→I flow, onset of infectiousness). Compartments (S/E/I/R) are unobservable internal model states; incidence is the derived quantity fitted to real case data.</p>
+      <div id="incidenceChart" style="width:100%;height:220px"></div>
     </div>
 
     <div class="card">
@@ -483,6 +489,7 @@ function runSim() {
       document.getElementById('resultsArea').style.display = 'block';
 
       plotResults(sol, m, p, days);
+      plotIncidence(sol, m, p);
       plotRt(sol, m, p);
       showKeyQuantities(sol, m, p, days);
       showInterpretation(sol, m, p, days);
@@ -538,17 +545,6 @@ function plotResults(sol, m, p, days) {
     line: { color: COLORS[comp]||'#888', width: comp==='I'?3:2 }
   }));
 
-  // Add incidence as dashed red line on secondary y-axis
-  const incidence = computeIncidence(sol, currentModelId, p);
-  traces.push({
-    x: sol.t,
-    y: incidence,
-    mode: 'lines',
-    name: 'Incidence (new cases/day)',
-    yaxis: 'y2',
-    line: { color: '#C0392B', width: 3, dash: 'dash' }
-  });
-
   const title = `${m.name} — N=${p.N.toLocaleString()}, β=${p.beta}${p.gamma?', γ='+p.gamma:''}`;
   document.getElementById('chartTitle').textContent = title;
 
@@ -557,15 +553,37 @@ function plotResults(sol, m, p, days) {
     font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
     xaxis:{title:'Time (days)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
     yaxis:{title:'Number of individuals', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
-    yaxis2:{title:'Incidence (new cases/day)', overlaying:'y', side:'right', gridcolor:'transparent', zeroline:false, showgrid:false},
-    legend:{orientation:'h', y:-0.22},
-    margin:{t:30, r:80, b:75, l:70}
+    legend:{orientation:'h', y:-0.2},
+    margin:{t:30, r:20, b:70, l:70}
   }, {responsive:true, displayModeBar:false});
 }
 
-/* ═══════════════════════════════════════
-   Rₜ PLOT
-═══════════════════════════════════════ */
+function plotIncidence(sol, m, p) {
+  const inc = computeIncidence(sol, currentModelId, p);
+  const peakInc = Math.max(...inc);
+  const peakT = sol.t[inc.indexOf(peakInc)];
+
+  const trace = {
+    x: sol.t, y: inc, mode: 'lines', name: 'Incidence (new cases/day)',
+    line: { color: '#C0392B', width: 3, dash: 'dash' },
+    fill: 'tozeroy', fillcolor: 'rgba(192,57,43,0.07)'
+  };
+
+  const peakLine = {
+    x: [peakT, peakT], y: [0, peakInc * 1.05],
+    mode: 'lines', name: `Peak day ${peakT}`,
+    line: { color: '#D97706', width: 1.5, dash: 'dot' }, showlegend: true
+  };
+
+  Plotly.newPlot('incidenceChart', [trace, peakLine], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
+    xaxis:{title:'Time (days)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
+    yaxis:{title:'New cases / day', gridcolor:'rgba(0,0,0,0.06)', zeroline:false, rangemode:'tozero'},
+    legend:{orientation:'h', y:-0.3},
+    margin:{t:10, r:20, b:65, l:70}
+  }, {responsive:true, displayModeBar:false});
+}
 function plotRt(sol, m, p) {
   const R0val = m.r0(p);
   const sIdx  = m.compartments.indexOf('S');
