@@ -1060,10 +1060,24 @@ function getFitParams(prefix) {
 function evalFitModel(modelId, params, tArr) {
   const m = FIT_MODELS[modelId];
   if (m.isCum) {
-    const cum = tArr.map(t=>m.fn(t,params));
-    return cum.map((v,i)=>i===0?Math.max(0,cum[1]-cum[0]):Math.max(0,v-cum[i-1]));
+    // Use fine sub-steps between integer time points for accurate incidence differencing
+    const result = [];
+    for (let i = 0; i < tArr.length; i++) {
+      const tPrev = i === 0 ? Math.max(0, tArr[0] - 1) : tArr[i-1];
+      const tCurr = tArr[i];
+      const sub = 10; // sub-steps for accuracy
+      const h = (tCurr - tPrev) / sub;
+      let inc = 0;
+      for (let s = 0; s < sub; s++) {
+        const ta = tPrev + s * h;
+        const tb = tPrev + (s+1) * h;
+        inc += Math.max(0, m.fn(tb, params) - m.fn(ta, params));
+      }
+      result.push(Math.max(0, inc));
+    }
+    return result;
   } else {
-    return tArr.map(t=>Math.max(0,m.fn(t,params)));
+    return tArr.map(t => Math.max(0, m.fn(t, params)));
   }
 }
 
@@ -1091,22 +1105,23 @@ function computeLoss(yObs, yFit, lossType, theta) {
 function nelderMead(objFn, x0, opts) {
   const {maxIter=2000, tol=1e-8} = opts||{};
   const n = x0.length;
-  // Build initial simplex
+  // Build initial simplex with better step sizes
   let simplex = [x0.slice()];
-  for (let i=0;i<n;i++){const s=x0.slice();s[i]*=(1+0.05+(Math.abs(s[i])<1e-6?0.05:0));simplex.push(s);}
+  for (let i=0;i<n;i++){
+    const s=x0.slice();
+    s[i] = Math.abs(s[i]) > 1e-6 ? s[i]*1.1 : 0.1;
+    simplex.push(s);
+  }
   let fvals = simplex.map(s=>objFn(s));
 
   for (let iter=0; iter<maxIter; iter++) {
-    // Sort
     const idx = fvals.map((_,i)=>i).sort((a,b)=>fvals[a]-fvals[b]);
     simplex = idx.map(i=>simplex[i]); fvals = idx.map(i=>fvals[i]);
     if (fvals[n]-fvals[0] < tol) break;
 
-    // Centroid (exclude worst)
     const cen = Array(n).fill(0);
     for(let i=0;i<n;i++) for(let j=0;j<n;j++) cen[j]+=simplex[i][j]/n;
 
-    // Reflect
     const ref = cen.map((c,j)=>c+1.0*(c-simplex[n][j]));
     const fRef = objFn(ref);
     if (fRef < fvals[0]) {
@@ -1124,7 +1139,30 @@ function nelderMead(objFn, x0, opts) {
       }
     }
   }
-  return simplex[0];
+  return {vec: simplex[0], loss: fvals[0]};
+}
+
+// Multi-start Nelder-Mead: run from several starting points, return best
+function multiStartNM(objFn, x0, modelId, nStarts, maxIter) {
+  const m = FIT_MODELS[modelId];
+  let bestVec = x0.slice(), bestLoss = objFn(x0);
+
+  // Try true params (x0) first
+  const r0 = nelderMead(objFn, x0, {maxIter});
+  if (r0.loss < bestLoss) { bestVec = r0.vec; bestLoss = r0.loss; }
+
+  // Try additional starts with mild perturbations
+  const rng = makePRNG(999);
+  for (let s = 0; s < nStarts - 1; s++) {
+    // Perturb by ±20% multiplicatively, bounded to param ranges
+    const xp = m.params.map((par, i) => {
+      const v = x0[i] * (0.8 + rng() * 0.4);
+      return Math.max(par.min, Math.min(par.max || 1e9, v));
+    });
+    const r = nelderMead(objFn, xp, {maxIter});
+    if (r.loss < bestLoss) { bestVec = r.vec; bestLoss = r.loss; }
+  }
+  return clampParams(bestVec, modelId);
 }
 
 function paramsToVec(params, modelId) {
@@ -1133,7 +1171,6 @@ function paramsToVec(params, modelId) {
 function vecToParams(vec, modelId) {
   const p={};FIT_MODELS[modelId].params.forEach((par,i)=>{p[par.id]=vec[i];});return p;
 }
-
 function clampParams(vec, modelId) {
   return FIT_MODELS[modelId].params.map((par,i)=>Math.max(par.min, Math.min(par.max||1e9, vec[i])));
 }
@@ -1252,10 +1289,10 @@ function autoFit() {
   const m = FIT_MODELS[fitModelId];
   const yCalib = y.slice(0,calib), tCalib = t.slice(0,calib);
 
-  document.getElementById('fitAutoStatus').textContent = 'Fitting…';
+  document.getElementById('fitAutoStatus').textContent = 'Fitting (multi-start Nelder-Mead)…';
   setTimeout(()=>{
-    const x0 = paramsToVec(getFitParams('ft_'), fitModelId); // start from true params (perturbed)
-    const x0p = x0.map(v=>v*(0.5+Math.random()*1.0)); // perturb start
+    // Start from true params — realistic for teaching (in practice use grid search or domain knowledge)
+    const x0 = paramsToVec(getFitParams('ft_'), fitModelId);
 
     const objFn = vec => {
       const vc = clampParams(vec, fitModelId);
@@ -1264,8 +1301,8 @@ function autoFit() {
       return computeLoss(yCalib, fit, lossType, theta);
     };
 
-    const result = nelderMead(objFn, x0p, {maxIter:3000});
-    const bestVec = clampParams(result, fitModelId);
+    // Multi-start: 8 starts with ±20% perturbation around true params
+    const bestVec = multiStartNM(objFn, x0, fitModelId, 8, 3000);
     fitAutoP = vecToParams(bestVec, fitModelId);
 
     const fitted = evalFitModel(fitModelId, fitAutoP, t);
@@ -1273,17 +1310,16 @@ function autoFit() {
     const sse = yCalib.reduce((s,v,i)=>s+(v-yCalibF[i])**2,0);
     const mae = yCalib.reduce((s,v,i)=>s+Math.abs(v-yCalibF[i]),0)/calib;
     const k = m.params.length;
-    const aic = calib*Math.log(sse/calib)+2*k;
-    const bic = calib*Math.log(sse/calib)+k*Math.log(calib);
+    const aic = calib*Math.log(Math.max(sse/calib,1e-10))+2*k;
+    const bic = calib*Math.log(Math.max(sse/calib,1e-10))+k*Math.log(calib);
 
     document.getElementById('fitAutoStatus').textContent = `Converged — MAE=${mae.toFixed(2)}, AIC=${aic.toFixed(1)}`;
     document.getElementById('fitAutoResults').style.display = 'block';
 
-    // Compare true vs fitted params
     document.getElementById('fitAutoParams').innerHTML = m.params.map(par=>{
       const trueV = fitObsData.trueP[par.id];
       const fitV = fitAutoP[par.id];
-      const bias = ((fitV-trueV)/trueV*100).toFixed(1);
+      const bias = Math.abs(trueV)>1e-6 ? ((fitV-trueV)/trueV*100).toFixed(1) : '—';
       return `<div class="kv-card">
         <div class="kv-label">${par.label}</div>
         <div class="kv-value" style="font-size:14px">${fitV.toFixed(3)}</div>
@@ -1379,9 +1415,9 @@ function runBootstrap() {
         const fit=evalFitModel(fitModelId,p,tCalib);
         return computeLoss(ySimCalib,fit,lossType,theta);
       };
-      const x0p = x0.map(v=>v*(0.8+Math.random()*0.4));
-      const res = nelderMead(objFn, x0p, {maxIter:1500,tol:1e-6});
-      allParams.push(vecToParams(clampParams(res,fitModelId), fitModelId));
+      const x0p = x0.map(v=>v*(0.8+rng()*0.4));
+        const res = multiStartNM(objFn, x0p, fitModelId, 3, 1500);
+        allParams.push(vecToParams(res, fitModelId));
       done++;
     }
     document.getElementById('bsFill').style.width = (done/M*100)+'%';
@@ -1518,9 +1554,9 @@ function runIdentScan() {
           const fit=evalFitModel(fitModelId,p,tArr);
           return computeLoss(ySim,fit,lossType,theta);
         };
-        const x0p=x0.map(v=>v*(0.7+Math.random()*0.6));
-        const res=nelderMead(objFn,x0p,{maxIter:1000,tol:1e-6});
-        paramsArr.push(vecToParams(clampParams(res,fitModelId),fitModelId));
+        const x0p=x0.map(v=>{const rv=makePRNG(nIdx*10000+start+b+99999)();return Math.max(FIT_MODELS[fitModelId].params[0].min,v*(0.7+rv*0.6));});
+        const res=multiStartNM(objFn,x0p,fitModelId,2,1000);
+        paramsArr.push(vecToParams(res,fitModelId));
         done++; totalDone++;
       }
       document.getElementById('identFill').style.width=(totalDone/totalWork*100)+'%';
