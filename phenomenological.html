@@ -46,7 +46,7 @@
 <main class="page-wrap">
   <div class="page-hero">
     <h1>Phenomenological Models Explorer</h1>
-    <p>Interactive simulator for growth curve models — from simple exponential growth to the Generalized Richards Model (GRM). Adjust parameters and run to see how each model shapes an epidemic curve. Example presets cover common outbreak patterns. Use the <a href="phenomenological.html">fitting tool</a> to calibrate these models to real data.</p>
+    <p>Interactive simulator for growth curve models — from simple exponential growth to the Generalized Richards Model (GRM). Adjust parameters and run to see how each model shapes an epidemic curve. Example presets cover common outbreak patterns. Use the log-scale toggle and growth rate panel to build intuition for how each model behaves across its full parameter range.</p>
   </div>
 
   <div class="card">
@@ -54,6 +54,7 @@
     <div class="pill-group" id="modelPills">
       <button class="pill-btn" onclick="setModel('exponential',this)">Exponential</button>
       <button class="pill-btn" onclick="setModel('ggm',this)">GGM</button>
+      <button class="pill-btn" onclick="setModel('glm',this)">GLM</button>
       <button class="pill-btn active" onclick="setModel('logistic',this)">Logistic</button>
       <button class="pill-btn" onclick="setModel('richards',this)">Richards</button>
       <button class="pill-btn" onclick="setModel('gompertz',this)">Gompertz</button>
@@ -93,8 +94,17 @@
   <div id="resultsArea" style="display:none">
 
     <div class="card">
-      <div class="section-label" id="chartTitle">Epidemic curve</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div class="section-label" id="chartTitle">Epidemic curve</div>
+        <button id="logToggleBtn" onclick="toggleLog()" style="font-size:11px;font-family:var(--font);padding:4px 12px;border:0.5px solid var(--border-med);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-secondary);cursor:pointer;transition:all 0.15s">Log scale: OFF</button>
+      </div>
       <div id="simChart" style="width:100%;height:380px"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Instantaneous growth rate r(t)</div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">d/dt [ln i(t)] — positive = growing, zero = peak, negative = declining</div>
+      <div id="growthRateChart" style="width:100%;height:240px"></div>
     </div>
 
     <div class="card">
@@ -119,18 +129,19 @@
     <div class="section-label">Model hierarchy & parameter reference</div>
     <div class="concept-box">
       <div class="cb-definition"><strong>Nesting structure</strong>
-        Exponential ⊂ GGM (add scaling p) ⊂ GRM (add carrying capacity K and asymmetry a)
-        Logistic ⊂ Richards (add asymmetry a) ⊂ GRM (add scaling p)
+        Exponential ⊂ GGM (add p) ⊂ GLM (add K) ⊂ GRM (add a)
+        Logistic ⊂ Richards (add a) ⊂ GRM (add p)
+        GLM nests Logistic (p=1) and GGM (K→∞)
         Gompertz: asymmetric S-curve with fixed inflection at K/e — independent branch
         The GRM nests all single-wave phenomenological models as special cases.
       </div>
       <div class="cb-interpretation"><strong>Parameters defined</strong>
         r = intrinsic growth rate (per time unit). Controls how fast cases multiply early on.
         K = final epidemic size (carrying capacity). Total cases at saturation.
-        p = scaling of growth (GGM, GRM). p=1 → exponential early growth; p&lt;1 → sub-exponential (polynomial). Captures spatial heterogeneity and clustering.
+        p = scaling of growth (GGM, GLM, GRM). p=1 → exponential early growth; p&lt;1 → sub-exponential (polynomial). Captures spatial heterogeneity and clustering.
         a = asymmetry (Richards, GRM). a=1 → symmetric (logistic); a&lt;1 → fast rise / slow decline; a&gt;1 → slow rise / fast decline.
         t_m = inflection time. Time of peak incidence / maximum growth rate.
-        I₀ = initial condition. Cumulative cases at t=0 (for cumulative models) or seed cases (GGM, GRM).
+        I₀ = initial condition. Cumulative cases at t=0 (for cumulative models) or seed cases (GGM, GLM, GRM).
       </div>
       <div class="cb-sowhat">Phenomenological models describe the shape of an epidemic curve without assuming a transmission mechanism. They are fast to fit, easy to interpret, and well-suited for short-horizon forecasting when only case counts are available. Their main limitation is that parameters have no direct mechanistic meaning — unlike R₀ in compartmental models — and they cannot capture interventions, multiple waves, or population structure without extension.</div>
     </div>
@@ -213,8 +224,64 @@ const MODELS = {
     interpret: (p, inc, cum, t) => [
       `With p = ${p.p}, growth is <strong>${p.p < 0.7 ? 'strongly' : 'mildly'} sub-exponential</strong>. The cumulative curve C(t) = [C₀^(1−p) + r·(1−p)·t]^(1/(1−p)) grows as a power function of time — faster than linear but slower than exponential.`,
       `Sub-exponential growth (p < 1) typically reflects <strong>spatial heterogeneity, contact clustering, or early interventions</strong> that limit how quickly the epidemic spreads through the population. A value of p = ${p.p} means that doubling time increases as the epidemic grows, unlike pure exponential growth where doubling time is constant.`,
-      `The GGM has no carrying capacity — it will grow indefinitely. It is designed for <strong>early-phase forecasting</strong> before the epidemic peak. Once growth visibly decelerates toward saturation, switch to Logistic, Richards, or GRM.`
+      `The GGM has no carrying capacity — it will grow indefinitely. It is designed for <strong>early-phase forecasting</strong> before the epidemic peak. Once growth visibly decelerates toward saturation, switch to GLM, Logistic, Richards, or GRM.`
     ]
+  },
+
+  glm: {
+    name: 'Generalized Logistic Model (GLM)',
+    desc: 'Adds sub-exponential scaling (p) to the logistic model. Combines the GGM\'s early-phase flexibility with a carrying capacity K. When p=1 it reduces to Logistic; as p decreases early growth becomes increasingly sub-exponential. Sits between GGM and GRM in the model hierarchy.',
+    nests: 'Nests Logistic (p=1), GGM (K→∞)',
+    equations: 'dC/dt = r · C^p · (1 − C/K)',
+    isCumulative: false,
+    params: [
+      {id:'K',  label:'K (final size)',    value:1000, min:10,   max:100000, step:10,  hint:'Total epidemic size'},
+      {id:'r',  label:'r (growth rate)',   value:0.5,  min:0.01, max:5,      step:0.05,hint:'Growth rate constant'},
+      {id:'p',  label:'p (scaling)',       value:0.8,  min:0.01, max:1,      step:0.01,hint:'p=1 → Logistic; p<1 → sub-exponential'},
+      {id:'I0', label:'I₀ (seed cases)',   value:5,    min:1,    max:1000,   step:1,   hint:'Initial cumulative cases at t=0'},
+    ],
+    fn: (t, p) => {
+      const Ks = Math.max(p.K, 1);
+      const ps = Math.max(0.01, Math.min(p.p, 1.0));
+      const C0 = Math.max(p.I0, 1e-6);
+      function dC(C) { return p.r * Math.pow(Math.max(C, 1e-10), ps) * (1 - Math.min(C / Ks, 1 - 1e-10)); }
+      if (t <= 0) return Math.max(0, dC(C0));
+      const steps = 40, h = t / steps; let C = C0;
+      for (let i = 0; i < steps; i++) {
+        const k1 = dC(C), k2 = dC(Math.max(C + h*k1/2, 1e-10)), k3 = dC(Math.max(C + h*k2/2, 1e-10)), k4 = dC(Math.max(C + h*k3, 1e-10));
+        C = Math.max(C + h*(k1+2*k2+2*k3+k4)/6, 1e-10);
+        if (C >= Ks) { C = Ks; break; }
+      }
+      return Math.max(0, dC(C));
+    },
+    presets: [
+      {label:'Sub-exponential (p=0.7, K=2000)', params:{K:2000, r:0.5, p:0.7, I0:5}, duration:60},
+      {label:'Near-logistic (p=0.95)', params:{K:1000, r:0.4, p:0.95, I0:5}, duration:50},
+      {label:'Ebola-like (p=0.8, K=3000)', params:{K:3000, r:0.4, p:0.8, I0:3}, duration:80},
+      {label:'Strongly sub-exp (p=0.5)', params:{K:5000, r:0.8, p:0.5, I0:10}, duration:80},
+    ],
+    keyQuantities: (p, inc, cum, t) => {
+      const peakI = Math.max(...inc);
+      const peakT = t[inc.indexOf(peakI)];
+      return [
+        {label:'K (final size)', value:p.K.toLocaleString(), sub:'Carrying capacity'},
+        {label:'p (scaling)', value:p.p.toFixed(2), sub:p.p<0.8?'Sub-exponential':'Near-logistic'},
+        {label:'Peak incidence', value:Math.round(peakI).toLocaleString(), sub:'Max new cases per period'},
+        {label:'Peak time', value:peakT+' periods', sub:'Time of max incidence'},
+      ];
+    },
+    interpret: (p, inc, cum, t) => {
+      const peakI = Math.max(...inc);
+      const peakT = t[inc.indexOf(peakI)];
+      const pDesc = p.p < 0.7 ? `strongly sub-exponential (p = ${p.p}) — growth accelerates slowly, typical of spatially structured outbreaks` :
+                   p.p < 0.95 ? `moderately sub-exponential (p = ${p.p}) — early growth is polynomial, not exponential` :
+                   `near-logistic (p = ${p.p} ≈ 1) — close to standard logistic dynamics`;
+      return [
+        `The GLM produces <strong>${pDesc}</strong>. Peak incidence of <strong>${Math.round(peakI).toLocaleString()} cases per period</strong> occurs around t = ${peakT}. The final epidemic size approaches K = ${p.K.toLocaleString()}.`,
+        `The p parameter modifies the <em>early growth phase only</em> — it controls how quickly incidence ramps up before susceptible depletion takes over. Unlike GRM, the GLM assumes a symmetric approach to K (a=1 fixed), so the decline mirrors the rise once corrected for sub-exponential scaling.`,
+        `GLM sits between GGM (no K) and GRM (adds asymmetry a) in the hierarchy: dC/dt = r·C^p·(1−C/K). It is a natural choice when sub-exponential early growth is evident but the outbreak is expected to be roughly symmetric around the peak. For asymmetric outbreaks, extend to Richards or GRM.`
+      ];
+    }
   },
 
   logistic: {
@@ -387,7 +454,7 @@ const MODELS = {
       return [
         `The GRM produces <strong>${pDesc}</strong> and <strong>${aDesc}</strong>. Peak incidence of <strong>${Math.round(peakI).toLocaleString()} cases per period</strong> occurs around t = ${peakT}.`,
         `The two parameters p and a control <em>independent</em> aspects of the curve shape: p governs how fast growth accelerates in the early phase (before the inflection), while a governs the asymmetry of the bell curve around the peak. This separation is what makes GRM more flexible than Richards (fixed p=1) or Logistic (p=1, a=1).`,
-        `The GRM is the basis of Dr. Chowell's QuantDiffForecast toolbox and your ODEcast toolbox. It is recommended for publication-quality single-wave incidence forecasting. Note that r, p, a, and K are correlated — well-identified estimates require ≥15–20 data points and informed starting values. For fitting to data, use the <a href="phenomenological.html">Phenomenological fitting tool</a>.`
+        `The GRM is the basis of Dr. Chowell's QuantDiffForecast toolbox and your ODEcast toolbox. It is recommended for publication-quality single-wave incidence forecasting. Note that r, p, a, and K are correlated — well-identified estimates require ≥15–20 data points and informed starting values.`
       ];
     }
   }
@@ -424,7 +491,9 @@ function buildUI(id) {
   document.getElementById('paramGrid').innerHTML = m.params.map(par=>`
     <div class="param-card">
       <label>${par.label}</label>
-      <input type="number" id="p_${par.id}" value="${par.value}" min="${par.min}" max="${par.max}" step="${par.step}" oninput="syncSlider('${par.id}')">
+      <input type="number" id="p_${par.id}" value="${par.value}" min="${par.min}" max="${par.max}" step="${par.step}"
+        oninput="syncSlider('${par.id}')"
+        onkeydown="clampOnKey(event,'${par.id}',${par.min},${par.max})">
       <input type="range"  id="s_${par.id}" value="${par.value}" min="${par.min}" max="${par.max}" step="${par.step}" oninput="syncNum('${par.id}')">
       <div class="param-hint">${par.hint}</div>
     </div>`
@@ -440,6 +509,19 @@ function syncNum(id) {
   const num = document.getElementById('p_'+id);
   const sld = document.getElementById('s_'+id);
   if(num) num.value = sld.value;
+}
+function clampOnKey(e, id, minVal, maxVal) {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const num = document.getElementById('p_'+id);
+  const sld = document.getElementById('s_'+id);
+  // Let the browser update value first, then clamp
+  setTimeout(() => {
+    let v = parseFloat(num.value);
+    if (isNaN(v)) v = minVal;
+    v = Math.max(minVal, Math.min(maxVal, v));
+    num.value = v;
+    if (sld) sld.value = v;
+  }, 0);
 }
 
 function applyPreset(i) {
@@ -505,6 +587,7 @@ function runSim() {
       document.getElementById('resultsArea').style.display = 'block';
 
       plotResults(tD, incD, cumD, m, p, showType);
+      plotGrowthRate(tD, incD);
       showKeyQuantities(m, incD, cumD, tD, p);
       showInterpretation(m, incD, cumD, tD, p);
       showEquations(m);
@@ -516,11 +599,27 @@ function runSim() {
 }
 
 /* ═══════════════════════════════════════
+   LOG SCALE STATE
+═══════════════════════════════════════ */
+let logScaleOn = false;
+let lastPlotArgs = null;
+
+function toggleLog() {
+  logScaleOn = !logScaleOn;
+  const btn = document.getElementById('logToggleBtn');
+  btn.textContent = logScaleOn ? 'Log scale: ON' : 'Log scale: OFF';
+  btn.style.borderColor = logScaleOn ? 'var(--accent)' : 'var(--border-med)';
+  btn.style.color = logScaleOn ? 'var(--accent)' : 'var(--text-secondary)';
+  if (lastPlotArgs) plotResults(...lastPlotArgs);
+}
+
+/* ═══════════════════════════════════════
    PLOTTING
 ═══════════════════════════════════════ */
-const COLORS = {inc:'#D85A30', cum:'#378ADD', inc2:'#1D9E75'};
+const COLORS = {inc:'#D85A30', cum:'#378ADD', inc2:'#1D9E75', gr:'#7C5CBF'};
 
 function plotResults(t, inc, cum, m, p, showType) {
+  lastPlotArgs = [t, inc, cum, m, p, showType];
   const traces = [];
 
   if (showType==='incidence' || showType==='both') {
@@ -537,17 +636,18 @@ function plotResults(t, inc, cum, m, p, showType) {
     });
   }
 
+  const yaxisType = logScaleOn ? 'log' : 'linear';
   const layout = {
     paper_bgcolor:'transparent', plot_bgcolor:'transparent',
     font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
     xaxis:{title:'Time (periods)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
-    yaxis:{title: showType==='cumulative'?'Cumulative cases':'New cases per period', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
+    yaxis:{title: showType==='cumulative'?'Cumulative cases':'New cases per period', gridcolor:'rgba(0,0,0,0.06)', zeroline:false, type:yaxisType},
     legend:{orientation:'h', y:-0.2},
     margin:{t:30, r:showType==='both'?70:20, b:70, l:70}
   };
 
   if (showType==='both') {
-    layout.yaxis2={title:'Cumulative cases', overlaying:'y', side:'right', gridcolor:'transparent', zeroline:false};
+    layout.yaxis2={title:'Cumulative cases', overlaying:'y', side:'right', gridcolor:'transparent', zeroline:false, type:yaxisType};
   }
 
   const titleStr = `${m.name}${p.K?' — K='+p.K.toLocaleString():''}${p.r?', r='+p.r:''}${p.p&&p.p!==1?', p='+p.p:''}${p.a&&p.a!==1?', a='+p.a:''}`;
@@ -556,9 +656,37 @@ function plotResults(t, inc, cum, m, p, showType) {
   Plotly.newPlot('simChart', traces, layout, {responsive:true, displayModeBar:false});
 }
 
-/* ═══════════════════════════════════════
-   KEY QUANTITIES & INTERPRETATION
-═══════════════════════════════════════ */
+function plotGrowthRate(t, inc) {
+  // Compute d/dt[ln(i(t))] via central differences; skip zeros
+  const gr = [];
+  const tGr = [];
+  for (let i = 1; i < t.length - 1; i++) {
+    if (inc[i] > 0 && inc[i-1] > 0 && inc[i+1] > 0) {
+      const dt = t[i+1] - t[i-1];
+      if (dt > 0) {
+        const val = (Math.log(inc[i+1]) - Math.log(inc[i-1])) / dt;
+        if (isFinite(val) && Math.abs(val) < 20) { // clip outliers
+          gr.push(val);
+          tGr.push(t[i]);
+        }
+      }
+    }
+  }
+
+  const zeroLine = {x:[tGr[0], tGr[tGr.length-1]], y:[0,0], mode:'lines', name:'Zero (peak)', line:{color:'rgba(0,0,0,0.2)', width:1, dash:'dot'}, showlegend:false};
+  const grTrace = {x:tGr, y:gr, mode:'lines', name:'Growth rate r(t)', line:{color:COLORS.gr, width:2}};
+
+  const layout = {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
+    xaxis:{title:'Time (periods)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
+    yaxis:{title:'d/dt [ln i(t)]', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
+    legend:{orientation:'h', y:-0.25},
+    margin:{t:15, r:20, b:65, l:65}
+  };
+
+  Plotly.newPlot('growthRateChart', [zeroLine, grTrace], layout, {responsive:true, displayModeBar:false});
+}
 function showKeyQuantities(m, inc, cum, t, p) {
   const cards = m.keyQuantities(p, inc, cum, t);
   document.getElementById('kvGrid').innerHTML = cards.map(c=>`
