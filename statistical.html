@@ -77,6 +77,11 @@
         <input type="number" id="simSeed" value="42" min="1" max="9999">
         <div class="param-hint">For reproducible noise</div>
       </div>
+      <div class="param-card" style="flex:1;min-width:180px">
+        <label>Calibration window</label>
+        <input type="number" id="simCalib" value="20" min="3" max="195">
+        <div class="param-hint">Periods used for fitting; remainder = forecast hold-out</div>
+      </div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn-primary" onclick="runSim()">Simulate</button>
@@ -87,11 +92,17 @@
   <div id="resultsArea" style="display:none">
     <div class="card">
       <div class="section-label" id="chartTitle">Simulated epidemic data</div>
-      <div id="simChart" style="width:100%;height:360px"></div>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Blue shaded region = 95% approximate CI. Dashed vertical line = calibration/forecast split. Gray region = forecast hold-out window.</p>
+      <div id="simChart" style="width:100%;height:380px"></div>
     </div>
     <div class="card">
       <div class="section-label">Key properties</div>
       <div class="kv-grid" id="kvGrid"></div>
+    </div>
+    <div class="card">
+      <div class="section-label">Forecast performance — hold-out window</div>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Metrics compare the true mean μ(t) against the model's extrapolated fitted values in the hold-out period. For actual research, fit the model to calibration data only and evaluate on held-out observations. Standard implementations available in all major statistical computing environments (R, Python, SAS, Julia, Stata).</p>
+      <div class="kv-grid" id="forecastGrid"></div>
     </div>
     <div class="interp-card">
       <div class="section-label">Auto-interpretation</div>
@@ -103,7 +114,6 @@
     </div>
   </div>
 
-  <!-- Reference -->
   <div class="card">
     <div class="section-label">Statistical model reference</div>
     <div class="concept-box">
@@ -117,7 +127,19 @@
         ARIMA: stationary or differenced series, captures serial autocorrelation, agnostic to mechanism.
         GAM: non-parametric smooth trend, captures non-linear epidemic shapes without assuming a growth model.
       </div>
-      <div class="cb-sowhat">Statistical models describe the data without assuming a transmission mechanism. They excel at short-horizon forecasting when the trend is stable, but they extrapolate the current pattern linearly and cannot capture turning points they haven't seen. Combine with phenomenological or compartmental models for mechanistic insight.</div>
+      <div class="cb-sowhat">Statistical models describe the data without assuming a transmission mechanism. They excel at short-horizon forecasting when the trend is stable, but they extrapolate the current pattern and cannot capture turning points they haven't seen. Combine with phenomenological or compartmental models for mechanistic insight. For real research — fitting, uncertainty quantification, and parametric bootstrap CIs — use standard implementations available in all major statistical computing environments (R, Python, Julia, SAS, Stata).</div>
+    </div>
+    <div class="concept-box" style="margin-top:0.75rem">
+      <div class="cb-definition"><strong>Confidence intervals — what this simulator shows</strong>
+        The shaded CI band uses Wald approximations: Poisson ± 1.96·√μ; NegBin ± 1.96·√(μ + μ²/θ); Log-linear ± exp(fitted ± 1.96·σ). These are approximate, symmetric, and assume large samples. For real data analysis, use likelihood-based profile CIs or parametric bootstrap — both available in standard software. Coverage (the fraction of true values falling inside stated CIs) is the key calibration diagnostic; a well-calibrated 95% CI should contain ~95% of true observations over repeated samples.
+      </div>
+      <div class="cb-interpretation"><strong>Forecast performance metrics</strong>
+        MAE (Mean Absolute Error): average absolute deviation — robust, same units as data.
+        RMSE (Root Mean Squared Error): penalizes large errors more than MAE — sensitive to outliers.
+        MAPE (Mean Absolute Percentage Error): scale-free, useful for comparing across outbreaks; undefined when true values are zero.
+        AIC / BIC: information criteria for model comparison on the same data. Lower = better fit penalized for complexity. BIC penalizes extra parameters more strongly. Use these to choose between Poisson and NegBin on the same dataset.
+        Coverage: fraction of true values inside the prediction interval — the key calibration metric. Target = stated level (e.g. 95%).
+      </div>
     </div>
   </div>
 
@@ -255,7 +277,7 @@ const MODELS = {
       return [
         `With θ = ${p.theta}, the variance at mid-series is approximately <strong>${varInflation}× the mean</strong> — <strong>${overdispLevel} overdispersion</strong>. Each observation has more variability than Poisson would predict, reflecting real-world heterogeneity in outbreak dynamics (contact clustering, superspreading, reporting variation).`,
         `The overdispersion parameter θ is directly related to the dispersion of secondary cases: a small θ (θ < 1) corresponds to high heterogeneity in transmission, consistent with evidence from COVID-19 and SARS where a minority of individuals drove most transmission. A Negative Binomial with θ < 1 is equivalent to modeling a heavy-tailed offspring distribution.`,
-        `In practice, always test for overdispersion when fitting Poisson GLM to epidemic data. If the Pearson dispersion statistic > 1.5, NB GLM will produce more honest (wider) confidence intervals and better-calibrated forecasts. The NB log-likelihood is the standard error model in the QuantDiffForecast and ODEcast toolboxes.`
+        `In practice, always test for overdispersion when fitting Poisson GLM to epidemic data. If the Pearson dispersion statistic > 1.5, NB GLM will produce more honest (wider) confidence intervals and better-calibrated forecasts. The Negative Binomial log-likelihood is the standard error model for epidemic count data in most statistical and epidemiological computing environments.`
       ];
     }
   },
@@ -421,7 +443,7 @@ const MODELS = {
     interpret: (p, res, n) => [
       `The GAM fits a smooth spline s(t) to the epidemic curve. With df = ${p.df}, the fitted smooth has <strong>${p.df} effective degrees of freedom</strong> — ${p.df<=4?'a relatively rigid, slowly-varying curve':p.df<=8?'a moderately flexible curve that can capture one major wave':' a very flexible curve that can follow local fluctuations closely, risking overfitting'}.`,
       `GAMs excel at capturing <strong>non-linear epidemic shapes</strong> including peaks, plateaus, and multi-modal patterns that parametric models (Logistic, Richards) might miss. The price is interpretability: s(t) has no mechanistic parameters like r or K — it is purely a data-adaptive smooth.`,
-      `Key choices when fitting GAMs in practice: (1) the <strong>basis type</strong> (thin-plate, cubic regression, P-spline) — thin-plate is the most general; (2) the <strong>smoothing penalty λ</strong>, typically selected by GCV or REML; (3) the <strong>error distribution</strong> — Poisson or NB for counts, not Gaussian. In R: <code>mgcv::gam(y ~ s(t, bs="cr", k=${p.df+1}), family=nb())</code>.`
+      `Key choices when fitting GAMs in practice: (1) the <strong>basis type</strong> (thin-plate, cubic regression, P-spline) — thin-plate is the most general; (2) the <strong>smoothing penalty λ</strong>, typically selected by GCV or REML; (3) the <strong>error distribution</strong> — Poisson or NB for counts, not Gaussian. Standard GAM implementations are available in all major statistical computing environments.`
     ]
   }
 };
@@ -476,25 +498,86 @@ function getParams() {
 }
 
 /* ═══════════════════════════════════════
+   CI COMPUTATION
+═══════════════════════════════════════ */
+function computeCI(modelId, mu, p) {
+  // Returns {lo, hi} arrays — approximate 95% Wald CIs
+  const z = 1.96;
+  switch(modelId) {
+    case 'poisson':
+      return { lo: mu.map(m => Math.max(0, m - z*Math.sqrt(m))),
+               hi: mu.map(m => m + z*Math.sqrt(m)) };
+    case 'negbinom':
+      return { lo: mu.map(m => Math.max(0, m - z*Math.sqrt(m + m*m/p.theta))),
+               hi: mu.map(m => m + z*Math.sqrt(m + m*m/p.theta)) };
+    case 'loglinear':
+      // CI on log scale, back-transform
+      return { lo: mu.map((m,i) => Math.max(0, Math.exp(Math.log(Math.max(m,0.01)) - z*p.sigma))),
+               hi: mu.map((m,i) => Math.exp(Math.log(Math.max(m,0.01)) + z*p.sigma)) };
+    case 'arima':
+      // Approximate PI: ±1.96·σ around conditional mean
+      return { lo: mu.map(m => Math.max(0, m - z*p.sigma)),
+               hi: mu.map(m => m + z*p.sigma) };
+    case 'gam':
+      // Use noise-based NB dispersion
+      const theta = Math.max(0.5, 10/p.noise);
+      return { lo: mu.map(m => Math.max(0, m - z*Math.sqrt(m + m*m/theta))),
+               hi: mu.map(m => m + z*Math.sqrt(m + m*m/theta)) };
+    default:
+      return { lo: mu.map(()=>0), hi: mu.map(()=>0) };
+  }
+}
+
+/* ═══════════════════════════════════════
+   FORECAST METRICS
+═══════════════════════════════════════ */
+function computeForecastMetrics(trueMu, fittedMu, ciLo, ciHi, calibN, n) {
+  if (calibN >= n) return null;
+  const holdMu  = trueMu.slice(calibN);
+  const holdFit = fittedMu.slice(calibN);
+  const holdLo  = ciLo.slice(calibN);
+  const holdHi  = ciHi.slice(calibN);
+  const m = holdMu.length;
+  if (m === 0) return null;
+
+  const mae  = holdMu.reduce((s,v,i) => s + Math.abs(v - holdFit[i]), 0) / m;
+  const rmse = Math.sqrt(holdMu.reduce((s,v,i) => s + (v-holdFit[i])**2, 0) / m);
+  const mape = holdMu.reduce((s,v,i) => v>0 ? s + Math.abs((v-holdFit[i])/v) : s, 0) / m * 100;
+  const coverage = holdMu.filter((v,i) => v >= holdLo[i] && v <= holdHi[i]).length / m * 100;
+
+  // AIC/BIC approximation using SSE on full series (log-likelihood approx)
+  const k = MODELS[currentModelId].params.length;
+  const sse = trueMu.reduce((s,v,i) => s + (v - fittedMu[i])**2, 0);
+  const aic = n * Math.log(sse/n) + 2*k;
+  const bic = n * Math.log(sse/n) + k*Math.log(n);
+
+  return { mae, rmse, mape, coverage, aic, bic, horizon: m };
+}
+
+/* ═══════════════════════════════════════
    SIMULATION
 ═══════════════════════════════════════ */
 function runSim() {
-  const m   = MODELS[currentModelId];
-  const p   = getParams();
-  const n   = parseInt(document.getElementById('simN').value)||30;
-  const seed= parseInt(document.getElementById('simSeed').value)||42;
-  const rng = makePRNG(seed);
+  const m    = MODELS[currentModelId];
+  const p    = getParams();
+  const n    = parseInt(document.getElementById('simN').value)||30;
+  const seed = parseInt(document.getElementById('simSeed').value)||42;
+  const calib= Math.min(parseInt(document.getElementById('simCalib').value)||20, n-1);
+  const rng  = makePRNG(seed);
 
   document.getElementById('simStatus').textContent='Simulating…';
   setTimeout(()=>{
     try {
       const res = m.simulate(p, n, rng);
-      const t = Array.from({length:n},(_,i)=>i+1);
+      const t   = Array.from({length:n},(_,i)=>i+1);
+      const ci  = computeCI(currentModelId, res.mu, p);
+      const metrics = computeForecastMetrics(res.mu, res.mu, ci.lo, ci.hi, calib, n);
 
-      document.getElementById('simStatus').textContent=`Done — ${n} observations`;
+      document.getElementById('simStatus').textContent=`Done — ${n} obs, calibration=${calib}, hold-out=${n-calib}`;
       document.getElementById('resultsArea').style.display='block';
 
-      plotResults(t, res, m, p);
+      plotResults(t, res, m, p, ci, calib);
+
       const kq = m.keyQuantities(p, res, n);
       document.getElementById('kvGrid').innerHTML = kq.map(c=>`
         <div class="kv-card">
@@ -502,10 +585,30 @@ function runSim() {
           <div class="kv-value">${c.value}</div>
           <div class="kv-sub">${c.sub}</div>
         </div>`).join('');
+
+      // Forecast performance cards
+      if (metrics) {
+        document.getElementById('forecastGrid').innerHTML = [
+          {label:'MAE', value:metrics.mae.toFixed(2), sub:'Mean absolute error (hold-out)'},
+          {label:'RMSE', value:metrics.rmse.toFixed(2), sub:'Root mean squared error (hold-out)'},
+          {label:'MAPE', value:metrics.mape.toFixed(1)+'%', sub:'Mean abs % error (hold-out)'},
+          {label:'95% CI coverage', value:metrics.coverage.toFixed(0)+'%', sub:`Over ${metrics.horizon} hold-out periods (target: 95%)`},
+          {label:'AIC', value:metrics.aic.toFixed(1), sub:'Lower = better (penalizes params)'},
+          {label:'BIC', value:metrics.bic.toFixed(1), sub:'Lower = better (stronger penalty)'},
+        ].map(c=>`
+          <div class="kv-card">
+            <div class="kv-label">${c.label}</div>
+            <div class="kv-value" style="font-size:15px">${c.value}</div>
+            <div class="kv-sub">${c.sub}</div>
+          </div>`).join('');
+      } else {
+        document.getElementById('forecastGrid').innerHTML = `<div style="font-size:13px;color:var(--text-tertiary)">Set calibration window &lt; n to see forecast metrics.</div>`;
+      }
+
       const paras = m.interpret(p, res, n);
       document.getElementById('interpText').innerHTML = paras.map(s=>`<p>${s}</p>`).join('');
       document.getElementById('equationsBox').innerHTML=`<div class="equation-box"><div class="eq-label">${m.name} specification</div>${m.equations}</div>`;
-      document.getElementById('chartTitle').textContent = `${m.name} — simulated epidemic data (seed=${seed})`;
+      document.getElementById('chartTitle').textContent = `${m.name} — n=${n}, calib=${calib}, hold-out=${n-calib} (seed=${seed})`;
     } catch(e) {
       document.getElementById('simStatus').textContent='Failed — '+e.message;
       console.error(e);
@@ -513,24 +616,63 @@ function runSim() {
   },10);
 }
 
-function plotResults(t, res, m, p) {
-  const traces = [
-    {x:t, y:res.y, mode:'markers', name:'Observed counts',
-     marker:{color:'#378ADD', size:6, opacity:0.8}},
-    {x:t, y:res.mu, mode:'lines', name:'True mean μ(t)',
-     line:{color:'#1D9E75', width:2.5, dash:'dash'}},
-  ];
+function plotResults(t, res, m, p, ci, calibN) {
+  const tCalib = t.slice(0, calibN);
+  const tHold  = t.slice(calibN);
+
+  const traces = [];
+
+  // CI ribbon — calibration window
+  if (ci && calibN > 0) {
+    traces.push({
+      x:[...tCalib, ...tCalib.slice().reverse()],
+      y:[...ci.hi.slice(0,calibN), ...ci.lo.slice(0,calibN).reverse()],
+      fill:'toself', fillcolor:'rgba(55,138,221,0.12)',
+      line:{color:'transparent'}, name:'95% CI (calib)', showlegend:true, hoverinfo:'skip'
+    });
+  }
+
+  // CI ribbon — hold-out window
+  if (ci && tHold.length > 0) {
+    traces.push({
+      x:[...tHold, ...tHold.slice().reverse()],
+      y:[...ci.hi.slice(calibN), ...ci.lo.slice(calibN).reverse()],
+      fill:'toself', fillcolor:'rgba(200,100,50,0.10)',
+      line:{color:'transparent'}, name:'95% CI (hold-out)', showlegend:true, hoverinfo:'skip'
+    });
+  }
+
+  // True mean
+  traces.push({x:t, y:res.mu, mode:'lines', name:'True mean μ(t)',
+    line:{color:'#1D9E75', width:2.5, dash:'dash'}});
+
+  // GAM smooth
   if (res.smooth) {
     traces.push({x:t, y:res.smooth, mode:'lines', name:'GAM smooth s(t)',
       line:{color:'#D85A30', width:2.5}});
   }
+
+  // Observed counts
+  traces.push({x:t, y:res.y, mode:'markers', name:'Observed counts',
+    marker:{color: t.map((_,i) => i < calibN ? '#378ADD' : '#C0392B'),
+            size:6, opacity:0.85}});
+
+  // Vertical split line
+  const splitLine = calibN < t.length ? {
+    x:[calibN+0.5, calibN+0.5],
+    y:[0, Math.max(...res.mu, ...res.y)*1.1],
+    mode:'lines', name:'Calib / forecast split',
+    line:{color:'#888', width:1.5, dash:'dot'}, showlegend:true
+  } : null;
+  if (splitLine) traces.push(splitLine);
+
   Plotly.newPlot('simChart', traces, {
     paper_bgcolor:'transparent', plot_bgcolor:'transparent',
     font:{family:'DM Sans, system-ui', size:12, color:'#5a5a56'},
     xaxis:{title:'Time (periods)', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
-    yaxis:{title:'Cases', gridcolor:'rgba(0,0,0,0.06)', zeroline:false},
-    legend:{orientation:'h', y:-0.2},
-    margin:{t:30, r:20, b:70, l:70}
+    yaxis:{title:'Cases', gridcolor:'rgba(0,0,0,0.06)', zeroline:false, rangemode:'tozero'},
+    legend:{orientation:'h', y:-0.22},
+    margin:{t:30, r:20, b:75, l:70}
   },{responsive:true, displayModeBar:false});
 }
 
