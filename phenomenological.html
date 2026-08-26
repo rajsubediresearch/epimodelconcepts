@@ -456,7 +456,7 @@ const MODELS = {
 
   glm: {
     name: 'Generalized Logistic Model (GLM)',
-    desc: 'Adds sub-exponential scaling (p) to the logistic model. Combines the GGM\'s early-phase flexibility with a carrying capacity K. When p=1 it reduces to Logistic; as p decreases early growth becomes increasingly sub-exponential. Sits between GGM and GRM in the model hierarchy.',
+    desc: 'Generalized Logistic Model (GLM) adds sub-exponential scaling (p) to the logistic model. Combines the GGM\'s early-phase flexibility with a carrying capacity K. When p=1 it reduces to Logistic; as p decreases early growth becomes increasingly sub-exponential. Sits between GGM and GRM in the model hierarchy.',
     nests: 'Nests Logistic (p=1), GGM (K→∞)',
     equations: 'dC/dt = r · C^p · (1 − C/K)',
     isCumulative: false,
